@@ -2,8 +2,11 @@
 
 import OrdersTable from '@/components/admin/OrdersTable'
 import Card from '@/components/ui/Card'
+import Button from '@/components/ui/Button'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
+import toast from 'react-hot-toast'
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState({
@@ -12,14 +15,66 @@ export default function AdminDashboard() {
     preparing: 0,
     ready: 0,
   })
+  const [loading, setLoading] = useState(true)
+  const [userEmail, setUserEmail] = useState('')
+  const router = useRouter()
 
   useEffect(() => {
-    const supabase = createClient()
+    const checkAuthAndFetch = async () => {
+      const supabase = createClient()
+
+      // Check authentication
+      const { data: { session } } = await supabase.auth.getSession()
+
+      if (!session) {
+        router.push('/admin/login')
+        return
+      }
+
+      // Check if user is admin
+      const { data: adminData, error: adminError } = await supabase
+        .from('admin_users')
+        .select('email')
+        .eq('email', session.user.email)
+        .single()
+
+      if (adminError || !adminData) {
+        toast.error('Unauthorized access')
+        await supabase.auth.signOut()
+        router.push('/admin/login')
+        return
+      }
+
+      setUserEmail(session.user.email || '')
+      setLoading(false)
+
+      // Fetch stats
+      fetchStats()
+
+      // Subscribe to changes
+      const channel = supabase
+        .channel('stats')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'orders',
+          },
+          () => {
+            fetchStats()
+          }
+        )
+        .subscribe()
+
+      return () => {
+        supabase.removeChannel(channel)
+      }
+    }
 
     const fetchStats = async () => {
-      const { data: orders } = await supabase
-        .from('orders')
-        .select('status')
+      const supabase = createClient()
+      const { data: orders } = await supabase.from('orders').select('status')
 
       if (orders) {
         setStats({
@@ -31,38 +86,43 @@ export default function AdminDashboard() {
       }
     }
 
-    fetchStats()
+    checkAuthAndFetch()
+  }, [router])
 
-    // Subscribe to changes
-    const channel = supabase
-      .channel('stats')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'orders',
-        },
-        () => {
-          fetchStats()
-        }
-      )
-      .subscribe()
+  const handleLogout = async () => {
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    toast.success('Logged out successfully')
+    router.push('/admin/login')
+  }
 
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [])
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading dashboard...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">
-            📊 Admin Dashboard
-          </h1>
-          <p className="text-gray-600">Manage all restaurant orders in real-time</p>
+        {/* Header with Logout */}
+        <div className="mb-8 flex justify-between items-center">
+          <div>
+            <h1 className="text-4xl font-bold text-gray-900 mb-2">
+              📊 Admin Dashboard
+            </h1>
+            <p className="text-gray-600">
+              Logged in as: <span className="font-semibold">{userEmail}</span>
+            </p>
+          </div>
+          <Button onClick={handleLogout} variant="danger">
+            🚪 Logout
+          </Button>
         </div>
 
         {/* Stats Cards */}

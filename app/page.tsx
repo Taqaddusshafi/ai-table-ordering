@@ -23,6 +23,10 @@ export default function Home() {
               Experience the future of dining with{' '}
               <span className="font-bold text-emerald-600">Google Gemini AI</span>
             </p>
+            <div className="mt-4 inline-flex items-center gap-2 bg-gradient-to-r from-emerald-100 to-cyan-100 px-6 py-3 rounded-full">
+              <span className="text-sm font-bold text-emerald-700">✨ NEW:</span>
+              <span className="text-sm text-gray-700">Manual Menu + AI Chat Ordering</span>
+            </div>
           </div>
 
           {/* CTA Cards */}
@@ -34,6 +38,13 @@ export default function Home() {
                   <div className="text-5xl mb-4 transform group-hover:scale-110 transition-transform">🛎️</div>
                   <h3 className="text-3xl font-bold text-gray-900 mb-2">Customer</h3>
                   <p className="text-gray-600 mb-4">Start your AI-powered ordering experience</p>
+                  
+                  {/* NEW: Dual ordering badges */}
+                  <div className="flex gap-2 mb-4">
+                    <span className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full font-semibold">📋 Browse Menu</span>
+                    <span className="text-xs bg-cyan-100 text-cyan-700 px-3 py-1 rounded-full font-semibold">🤖 AI Chat</span>
+                  </div>
+                  
                   <div className="flex items-center text-emerald-600 font-semibold">
                     Scan & Order
                     <svg className="w-5 h-5 ml-2 group-hover:translate-x-2 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -62,12 +73,18 @@ export default function Home() {
             </Link>
           </div>
 
-          {/* Features Grid */}
-          <div className="grid md:grid-cols-3 gap-6 mb-16">
+          {/* Features Grid - Updated */}
+          <div className="grid md:grid-cols-4 gap-6 mb-16">
             <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg hover:shadow-xl transition-shadow">
               <div className="text-4xl mb-3">🤖</div>
-              <h4 className="text-xl font-bold text-gray-900 mb-2">AI-Powered</h4>
+              <h4 className="text-xl font-bold text-gray-900 mb-2">AI Chat</h4>
               <p className="text-gray-600">Natural conversation with Gemini AI for seamless ordering</p>
+            </div>
+
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg hover:shadow-xl transition-shadow">
+              <div className="text-4xl mb-3">📋</div>
+              <h4 className="text-xl font-bold text-gray-900 mb-2">Manual Menu</h4>
+              <p className="text-gray-600">Browse categories, add to cart, and checkout easily</p>
             </div>
 
             <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg hover:shadow-xl transition-shadow">
@@ -80,6 +97,62 @@ export default function Home() {
               <div className="text-4xl mb-3">💳</div>
               <h4 className="text-xl font-bold text-gray-900 mb-2">Easy Payment</h4>
               <p className="text-gray-600">Secure Razorpay & UPI integration</p>
+            </div>
+          </div>
+
+          {/* NEW: Ordering Methods Showcase */}
+          <div className="bg-gradient-to-r from-emerald-600 to-cyan-600 rounded-3xl shadow-2xl p-8 md:p-12 mb-16 text-white">
+            <div className="text-center mb-8">
+              <h3 className="text-4xl font-bold mb-3">🎯 Two Ways to Order</h3>
+              <p className="text-emerald-100 text-lg">Choose the method that works best for you</p>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-8">
+              <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
+                <div className="text-5xl mb-4">📋</div>
+                <h4 className="text-2xl font-bold mb-3">Browse & Select</h4>
+                <ul className="space-y-2 text-emerald-50">
+                  <li className="flex items-center gap-2">
+                    <span className="text-green-300">✓</span>
+                    View categorized menu items
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="text-green-300">✓</span>
+                    Add items to cart
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="text-green-300">✓</span>
+                    Adjust quantities easily
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="text-green-300">✓</span>
+                    Review before checkout
+                  </li>
+                </ul>
+              </div>
+
+              <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
+                <div className="text-5xl mb-4">🤖</div>
+                <h4 className="text-2xl font-bold mb-3">Chat with AI</h4>
+                <ul className="space-y-2 text-emerald-50">
+                  <li className="flex items-center gap-2">
+                    <span className="text-green-300">✓</span>
+                    Talk naturally to place orders
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="text-green-300">✓</span>
+                    Get menu recommendations
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="text-green-300">✓</span>
+                    Ask questions about dishes
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="text-green-300">✓</span>
+                    Fast, conversational ordering
+                  </li>
+                </ul>
+              </div>
             </div>
           </div>
 
@@ -134,7 +207,7 @@ export default function Home() {
                 <div className="flex-1">
                   <h5 className="font-bold text-gray-900 mb-1">Start Ordering! 🚀</h5>
                   <p className="text-gray-600 text-sm">
-                    Click "Customer" above to test the AI ordering experience
+                    Click "Customer" above to test both ordering methods
                   </p>
                 </div>
               </div>
