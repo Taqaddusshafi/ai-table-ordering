@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import Button from '@/components/ui/Button'
 import toast from 'react-hot-toast'
+import { Send, Bot, User, Loader2, ShoppingBag } from 'lucide-react'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -16,7 +16,6 @@ interface ChatInterfaceProps {
   onOrderConfirmed: (items: any[], totalAmount: number) => void
 }
 
-// Helper function to calculate total
 function calcTotal(items: any[]) {
   if (!items || !Array.isArray(items)) return 0
   return items.reduce(
@@ -33,8 +32,7 @@ export default function ChatInterface({
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
-      content:
-        "👋 Hi! I'm your AI ordering assistant. What would you like to order today?",
+      content: "👋 Hi! I'm your AI ordering assistant. What would you like to order today?",
     },
   ])
   const [input, setInput] = useState('')
@@ -42,6 +40,7 @@ export default function ChatInterface({
   const [lastValidItems, setLastValidItems] = useState<any[]>([])
   const lastTotal = useRef<number>(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -78,7 +77,6 @@ export default function ChatInterface({
 
       const aiResponse = result.data
 
-      // ✅ Remember last valid items (if AI returned them)
       if (aiResponse.items && aiResponse.items.length > 0) {
         setLastValidItems(aiResponse.items)
         lastTotal.current =
@@ -87,17 +85,15 @@ export default function ChatInterface({
             : calcTotal(aiResponse.items)
       }
 
-      // ✅ Append AI message
       setMessages((prev) => [
         ...prev,
         {
           role: 'assistant',
-          content: aiResponse.message || 'I’m ready to take your order!',
+          content: aiResponse.message || 'Im ready to take your order',
           data: aiResponse,
         },
       ])
 
-      // ✅ Handle AI actions
       if (aiResponse.action === 'payment') {
         const itemsForPayment =
           aiResponse.items?.length > 0 ? aiResponse.items : lastValidItems
@@ -127,8 +123,7 @@ export default function ChatInterface({
         ...prev,
         {
           role: 'assistant',
-          content:
-            "Sorry, I'm having trouble understanding. Could you rephrase your order?",
+          content: "Sorry, I'm having trouble understanding. Could you rephrase your order?",
         },
       ])
     } finally {
@@ -136,54 +131,96 @@ export default function ChatInterface({
     }
   }
 
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSend()
+    }
+  }
+
   return (
-    <div className="flex flex-col h-[600px] bg-white rounded-xl shadow-lg">
+    <div className="flex flex-col h-[calc(100vh-280px)] sm:h-[500px] lg:h-[600px] bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-xl overflow-hidden">
       {/* Header */}
-      <div className="p-4 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-t-xl">
-        <h2 className="text-xl font-bold">🤖 AI Ordering Assistant</h2>
-        <p className="text-sm opacity-90">Powered by Google Gemini 2.5</p>
+      <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 px-4 py-3 sm:px-6 sm:py-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white rounded-full flex items-center justify-center shadow-lg">
+            <Bot className="w-6 h-6 sm:w-7 sm:h-7 text-blue-600" />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-bold text-white text-base sm:text-lg">AI Assistant</h3>
+            <p className="text-xs sm:text-sm text-blue-100">Powered by Gemini 2.5</p>
+          </div>
+          <div className="hidden sm:flex items-center gap-2 bg-white/20 px-3 py-1 rounded-full">
+            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+            <span className="text-xs text-white">Online</span>
+          </div>
+        </div>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 bg-gradient-to-b from-gray-50 to-white">
         {messages.map((message, index) => (
           <div
             key={index}
-            className={`flex ${
+            className={`flex gap-2 sm:gap-3 ${
               message.role === 'user' ? 'justify-end' : 'justify-start'
             }`}
           >
+            {/* Avatar - Assistant */}
+            {message.role === 'assistant' && (
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <Bot className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
+              </div>
+            )}
+
+            {/* Message Bubble */}
             <div
-              className={`max-w-[80%] p-4 rounded-2xl ${
+              className={`max-w-[80%] sm:max-w-[75%] rounded-2xl px-3 py-2 sm:px-4 sm:py-3 shadow-md ${
                 message.role === 'user'
-                  ? 'bg-green-600 text-white rounded-br-none'
-                  : 'bg-gray-100 text-gray-900 rounded-bl-none'
+                  ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-br-sm'
+                  : 'bg-white border border-gray-200 text-gray-900 rounded-bl-sm'
               }`}
             >
-              <p className="whitespace-pre-wrap">{message.content}</p>
+              <p className="text-sm sm:text-base whitespace-pre-wrap break-words leading-relaxed">
+                {message.content}
+              </p>
 
               {/* Order Summary */}
-              {message.data?.items?.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-gray-300">
-                  <p className="font-semibold mb-2">📋 Order Summary:</p>
-                  {message.data.items.map((item: any, idx: number) => (
-                    <div
-                      key={idx}
-                      className="text-sm flex justify-between mb-1"
-                    >
-                      <span>
-                        {item.quantity}× {item.name || 'Item'}
-                      </span>
-                      <span className="font-semibold">
-                        ₹{Number((item.price || 0) * (item.quantity || 1))}
-                      </span>
-                    </div>
-                  ))}
-                  <div className="text-sm font-bold flex justify-between mt-2 pt-2 border-t border-gray-300">
+              {message.data?.items && message.data.items.length > 0 && (
+                <div className={`mt-3 pt-3 border-t ${
+                  message.role === 'user' ? 'border-white/30' : 'border-gray-200'
+                }`}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <ShoppingBag className="w-4 h-4" />
+                    <p className="font-semibold text-sm">Order Summary:</p>
+                  </div>
+                  <div className="space-y-2">
+                    {message.data.items.map((item: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className={`text-xs sm:text-sm p-2 rounded-lg ${
+                          message.role === 'user'
+                            ? 'bg-white/10'
+                            : 'bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex justify-between items-center">
+                          <span className="font-medium">
+                            {item.quantity}× {item.name || 'Item'}
+                          </span>
+                          <span className="font-bold">
+                            ₹{Number((item.price || 0) * (item.quantity || 1))}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className={`flex justify-between items-center mt-2 pt-2 border-t text-sm sm:text-base font-bold ${
+                    message.role === 'user' ? 'border-white/30' : 'border-gray-200'
+                  }`}>
                     <span>Total:</span>
-                    <span className="text-green-600">
-                      ₹
-                      {message.data.total_amount && message.data.total_amount > 0
+                    <span className={message.role === 'user' ? 'text-yellow-300' : 'text-blue-600'}>
+                      ₹{message.data.total_amount && message.data.total_amount > 0
                         ? message.data.total_amount
                         : calcTotal(message.data.items)}
                     </span>
@@ -191,51 +228,93 @@ export default function ChatInterface({
                 </div>
               )}
             </div>
+
+            {/* Avatar - User */}
+            {message.role === 'user' && (
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <User className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600" />
+              </div>
+            )}
           </div>
         ))}
 
         {/* Loading Indicator */}
         {isLoading && (
-          <div className="flex justify-start">
-            <div className="bg-gray-100 text-gray-900 p-4 rounded-2xl rounded-bl-none">
-              <div className="flex gap-2">
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                <div
-                  className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                  style={{ animationDelay: '0.2s' }}
-                ></div>
-                <div
-                  className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                  style={{ animationDelay: '0.4s' }}
-                ></div>
-              </div>
+          <div className="flex gap-3 justify-start">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-100 rounded-full flex items-center justify-center">
+              <Bot className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
+            </div>
+            <div className="bg-white border border-gray-200 rounded-2xl rounded-bl-sm px-4 py-3 shadow-md">
+              <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
             </div>
           </div>
         )}
+
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
-      <div className="p-4 border-t">
-        <div className="flex gap-2">
+      {/* Input Area */}
+      <div className="border-t border-gray-200 p-3 sm:p-4 bg-white">
+        <div className="flex gap-2 sm:gap-3">
           <input
+            ref={inputRef}
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+            onKeyPress={handleKeyPress}
             placeholder="Type your order here..."
-            className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
             disabled={isLoading}
+            className="flex-1 px-3 py-2 sm:px-4 sm:py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent text-sm sm:text-base disabled:bg-gray-100 disabled:cursor-not-allowed transition-all"
           />
-          <Button
+          <button
             onClick={handleSend}
-            disabled={!input.trim() || isLoading}
-            variant="primary"
+            disabled={isLoading || !input.trim()}
+            className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 py-2 sm:px-6 sm:py-3 rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 active:scale-95"
           >
-            {isLoading ? '...' : 'Send'}
-          </Button>
+            {isLoading ? (
+              <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
+            ) : (
+              <Send className="w-4 h-4 sm:w-5 sm:h-5" />
+            )}
+            <span className="hidden sm:inline">Send</span>
+          </button>
+        </div>
+        
+        {/* Quick Actions (Optional) */}
+        <div className="flex gap-2 mt-2 overflow-x-auto hide-scrollbar">
+          <button
+            onClick={() => setInput('Show me the menu')}
+            disabled={isLoading}
+            className="flex-shrink-0 text-xs px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-full transition-colors disabled:opacity-50"
+          >
+            📋 Show Menu
+          </button>
+          <button
+            onClick={() => setInput('What do you recommend?')}
+            disabled={isLoading}
+            className="flex-shrink-0 text-xs px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-full transition-colors disabled:opacity-50"
+          >
+            ⭐ Recommend
+          </button>
+          <button
+            onClick={() => setInput('I want a pizza')}
+            disabled={isLoading}
+            className="flex-shrink-0 text-xs px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-full transition-colors disabled:opacity-50"
+          >
+            🍕 Pizza
+          </button>
         </div>
       </div>
+
+      <style jsx>{`
+        .hide-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+        .hide-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
     </div>
   )
 }

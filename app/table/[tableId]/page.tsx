@@ -7,6 +7,7 @@ import ManualMenu from '@/components/customer/ManualMenu'
 import OrderStatus from '@/components/customer/OrderStatus'
 import { generateSessionId } from '@/lib/utils/helpers'
 import toast from 'react-hot-toast'
+import { Sparkles } from 'lucide-react'
 
 export default function TablePage() {
   const params = useParams()
@@ -45,7 +46,7 @@ export default function TablePage() {
       const result = await response.json()
       if (result.success) {
         toast.success('🎉 Order placed successfully!')
-        setActiveTab('orders') // Auto-switch to Orders tab
+        setActiveTab('orders')
       } else {
         throw new Error(result.error || 'Failed to create order')
       }
@@ -56,10 +57,11 @@ export default function TablePage() {
 
   if (!tableId) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-blue-50 px-4 text-center">
-        <div>
-          <div className="text-lg sm:text-xl text-red-600">No Table ID in URL</div>
-          <p className="text-gray-600 mt-2 text-sm sm:text-base">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50 px-4">
+        <div className="text-center">
+          <div className="text-6xl mb-4">⚠️</div>
+          <div className="text-xl font-bold text-red-600 mb-2">No Table ID</div>
+          <p className="text-gray-600 text-sm sm:text-base">
             Please visit a valid table URL like /table/test-table-1
           </p>
         </div>
@@ -69,9 +71,9 @@ export default function TablePage() {
 
   if (!sessionId) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-blue-50 px-4 text-center">
-        <div>
-          <div className="animate-spin rounded-full h-12 w-12 sm:h-16 sm:w-16 border-b-2 border-green-600 mx-auto mb-4"></div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 sm:h-16 sm:w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600 text-sm sm:text-base">
             Loading table {tableId}...
           </p>
@@ -81,93 +83,100 @@ export default function TablePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50 py-6 sm:py-8 px-3 sm:px-4">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-6 sm:mb-8">
-          <h1 className="text-3xl sm:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-green-600 to-teal-600 mb-2 sm:mb-3 break-words">
-            Table #{tableId}
-          </h1>
-          <p className="text-base sm:text-lg text-gray-600">
-            📋 Browse • 🤖 AI • 🧾 Orders — all in one place
-          </p>
-          <p className="text-[10px] sm:text-xs text-gray-400 mt-2 font-mono">
-            Session: {sessionId.slice(0, 12)}...
-          </p>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+      {/* Header */}
+      <div className="bg-white shadow-md border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+          <div className="text-center">
+            <div className="inline-flex items-center gap-2 mb-2">
+              <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
+              <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600">
+                Table #{tableId}
+              </h1>
+            </div>
+            <p className="text-sm sm:text-base text-gray-600">
+              Browse menu, chat with AI, or view your orders
+            </p>
+            <p className="text-xs text-gray-400 mt-1 font-mono">
+              Session: {sessionId.slice(0, 12)}...
+            </p>
+          </div>
         </div>
 
         {/* Tab Navigation */}
-        <div className="mb-4 sm:mb-6">
-          <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-            <div className="flex flex-col sm:flex-row border-b border-gray-200">
+        <div className="border-t border-gray-200">
+          <div className="max-w-7xl mx-auto px-2 sm:px-4">
+            <div className="flex items-center justify-around">
               <button
                 onClick={() => setActiveTab('manual')}
-                className={`flex-1 py-3 sm:py-4 px-4 sm:px-6 font-semibold sm:font-bold text-base sm:text-lg transition-all duration-200 ${
-                  activeTab === 'manual'
-                    ? 'bg-gradient-to-r from-green-600 to-teal-600 text-white'
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-800'
+                className={`flex-1 py-3 sm:py-4 px-2 text-xs sm:text-sm font-semibold transition-all duration-200 relative ${
+                  activeTab === 'manual' ? 'text-blue-600' : 'text-gray-600 hover:text-gray-800'
                 }`}
               >
-                <span className="inline-block mr-1 sm:mr-2">📋</span>
-                Browse Menu
+                <div className="flex flex-col items-center gap-1">
+                  <span className="text-xl sm:text-2xl">📋</span>
+                  <span>Menu</span>
+                </div>
+                {activeTab === 'manual' && (
+                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-600 to-indigo-600"></div>
+                )}
               </button>
 
               <button
                 onClick={() => setActiveTab('ai')}
-                className={`flex-1 py-3 sm:py-4 px-4 sm:px-6 font-semibold sm:font-bold text-base sm:text-lg transition-all duration-200 ${
-                  activeTab === 'ai'
-                    ? 'bg-gradient-to-r from-green-600 to-teal-600 text-white'
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-800'
+                className={`flex-1 py-3 sm:py-4 px-2 text-xs sm:text-sm font-semibold transition-all duration-200 relative ${
+                  activeTab === 'ai' ? 'text-blue-600' : 'text-gray-600 hover:text-gray-800'
                 }`}
               >
-                <span className="inline-block mr-1 sm:mr-2">🤖</span>
-                AI Assistant
+                <div className="flex flex-col items-center gap-1">
+                  <span className="text-xl sm:text-2xl">🤖</span>
+                  <span>AI Chat</span>
+                </div>
+                {activeTab === 'ai' && (
+                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-600 to-indigo-600"></div>
+                )}
               </button>
 
               <button
                 onClick={() => setActiveTab('orders')}
-                className={`flex-1 py-3 sm:py-4 px-4 sm:px-6 font-semibold sm:font-bold text-base sm:text-lg transition-all duration-200 ${
-                  activeTab === 'orders'
-                    ? 'bg-gradient-to-r from-green-600 to-teal-600 text-white'
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-800'
+                className={`flex-1 py-3 sm:py-4 px-2 text-xs sm:text-sm font-semibold transition-all duration-200 relative ${
+                  activeTab === 'orders' ? 'text-blue-600' : 'text-gray-600 hover:text-gray-800'
                 }`}
               >
-                <span className="inline-block mr-1 sm:mr-2">🧾</span>
-                My Orders
+                <div className="flex flex-col items-center gap-1">
+                  <span className="text-xl sm:text-2xl">🧾</span>
+                  <span>Orders</span>
+                </div>
+                {activeTab === 'orders' && (
+                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-600 to-indigo-600"></div>
+                )}
               </button>
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Content */}
-        <div className="bg-white shadow-lg rounded-2xl p-4 sm:p-6 min-h-[400px]">
-          {activeTab === 'manual' && (
-            <ManualMenu
-              tableId={tableId}
-              sessionId={sessionId}
-              onOrderConfirmed={handleOrderConfirmed}
-            />
-          )}
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
+        {activeTab === 'manual' && (
+          <ManualMenu
+            tableId={tableId}
+            sessionId={sessionId}
+            onOrderConfirmed={handleOrderConfirmed}
+          />
+        )}
 
-          {activeTab === 'ai' && (
-            <ChatInterface
-              tableId={tableId}
-              sessionId={sessionId}
-              onOrderConfirmed={handleOrderConfirmed}
-            />
-          )}
+        {activeTab === 'ai' && (
+          <ChatInterface
+            tableId={tableId}
+            sessionId={sessionId}
+            onOrderConfirmed={handleOrderConfirmed}
+          />
+        )}
 
-          {activeTab === 'orders' && (
-            <div>
-              <h2 className="text-2xl font-bold text-green-700 mb-4 text-center sm:text-left">
-                🧾 Your Active Orders
-              </h2>
-              <div className="border-t border-gray-200 pt-4">
-                <OrderStatus tableId={tableId} sessionId={sessionId} />
-              </div>
-            </div>
-          )}
-        </div>
+        {activeTab === 'orders' && (
+          <OrderStatus tableId={tableId} sessionId={sessionId} />
+        )}
       </div>
     </div>
   )
