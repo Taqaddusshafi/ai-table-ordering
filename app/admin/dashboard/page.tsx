@@ -7,7 +7,8 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
-import { Bell, BellRing } from 'lucide-react'
+import { Bell, BellRing, UtensilsCrossed } from 'lucide-react' // Added UtensilsCrossed
+import Link from 'next/link' // Added Link
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState({
@@ -203,6 +204,14 @@ export default function AdminDashboard() {
             </div>
             
             <div className="flex items-center gap-3">
+              {/* ✅ Manage Menu Button */}
+              <Link href="/admin/menu">
+                <button className="inline-flex items-center gap-2 bg-white px-4 py-2 sm:px-6 sm:py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all hover:-translate-y-1">
+                  <UtensilsCrossed className="w-5 h-5 text-blue-600" />
+                  <span className="hidden sm:inline text-gray-900">Menu</span>
+                </button>
+              </Link>
+
               {/* Notification Bell */}
               <button
                 onClick={clearUnreadOrders}
@@ -277,10 +286,8 @@ export default function AdminDashboard() {
 
 function playAlertSound() {
   try {
-    const audio = new Audio('/alert.mp3') // Add to public folder
+    const audio = new Audio('/alert.mp3')
     audio.volume = 0.7
-    audio.play()
-  } catch (e) {
-    console.log('Sound play failed:', e)
-  }
+    audio.play().catch(() => {})
+  } catch (e) {}
 }
