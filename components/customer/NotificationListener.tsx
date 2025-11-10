@@ -19,7 +19,6 @@ export default function NotificationListener({
   const [showPermissionPrompt, setShowPermissionPrompt] = useState(false)
 
   useEffect(() => {
-    // Check if we should show permission prompt
     if (isSupported && permission === 'default') {
       setShowPermissionPrompt(true)
     }
@@ -30,6 +29,9 @@ export default function NotificationListener({
     if (granted) {
       toast.success('Notifications enabled! 🔔')
       setShowPermissionPrompt(false)
+      
+      // Register service worker for better notification support
+      registerServiceWorker()
     } else {
       toast.error('Please allow notifications in your browser settings')
     }
@@ -40,7 +42,6 @@ export default function NotificationListener({
 
     const supabase = createClient()
 
-    // Subscribe to order status changes
     const ordersChannel = supabase
       .channel(`orders_${sessionId}`)
       .on(
@@ -55,7 +56,6 @@ export default function NotificationListener({
           const order = payload.new as any
           const oldOrder = payload.old as any
 
-          // Only notify if status actually changed
           if (order.status !== oldOrder.status) {
             const statusMessages: Record<string, { title: string; body: string; icon: string }> = {
               preparing: {
@@ -82,24 +82,21 @@ export default function NotificationListener({
 
             const notification = statusMessages[order.status]
             if (notification) {
-              // Show toast
+              // Show toast (works everywhere)
               toast.success(notification.body, { 
                 duration: 5000,
                 icon: notification.icon
               })
 
-              // Show browser notification
+              // Show notification with sound
               if (permission === 'granted') {
-                showNotification(notification.title, {
-                  body: notification.body,
-                  tag: order.id,
-                  icon: '/icon-192.png',
-                  badge: '/icon-192.png',
-                })
+                showNotificationWithSound(notification.title, notification.body, order.id)
               }
 
-              // Play sound
-              playNotificationSound()
+              // Vibrate on mobile
+              if ('vibrate' in navigator) {
+                navigator.vibrate([200, 100, 200, 100, 200])
+              }
             }
           }
         }
@@ -111,7 +108,6 @@ export default function NotificationListener({
     }
   }, [sessionId, tableId, permission, showNotification])
 
-  // Permission prompt banner
   if (showPermissionPrompt && isSupported) {
     return (
       <div className="fixed top-4 left-4 right-4 z-50 animate-slide-down">
@@ -155,35 +151,61 @@ export default function NotificationListener({
   return null
 }
 
-function playNotificationSound() {
-  try {
-    // Use a data URL for a simple beep if audio file doesn't exist
-    const audio = new Audio('/notification.mp3')
-    audio.volume = 0.5
-    audio.play().catch((e) => {
-      console.log('Sound play failed:', e)
-      // Fallback: play a beep using Web Audio API
-      try {
-        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
-        const oscillator = audioContext.createOscillator()
-        const gainNode = audioContext.createGain()
-        
-        oscillator.connect(gainNode)
-        gainNode.connect(audioContext.destination)
-        
-        oscillator.frequency.value = 800
-        oscillator.type = 'sine'
-        
-        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5)
-        
-        oscillator.start(audioContext.currentTime)
-        oscillator.stop(audioContext.currentTime + 0.5)
-      } catch (beepError) {
-        console.log('Beep sound failed:', beepError)
-      }
+// Register service worker for better notification support
+function registerServiceWorker() {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch((error) => {
+      console.log('Service Worker registration failed:', error)
     })
-  } catch (error) {
-    console.log('Audio initialization failed:', error)
+  }
+}
+
+// Show notification with sound support
+function showNotificationWithSound(title: string, body: string, tag: string) {
+  if ('serviceWorker' in navigator && 'Notification' in window) {
+    // Try using service worker for better mobile support
+    navigator.serviceWorker.ready.then((registration) => {
+      // Cast to any to avoid TypeScript errors with vibrate
+      const options: any = {
+        body,
+        icon: '/icon-192.png',
+        badge: '/icon-192.png',
+        tag,
+        requireInteraction: true,
+        vibrate: [200, 100, 200, 100, 200],
+        silent: false,
+        actions: [
+          {
+            action: 'view',
+            title: 'View Order'
+          }
+        ],
+        data: {
+          url: window.location.href
+        }
+      }
+      
+      registration.showNotification(title, options)
+    }).catch(() => {
+      // Fallback to regular notification
+      const options: any = {
+        body,
+        icon: '/icon-192.png',
+        badge: '/icon-192.png',
+        tag,
+        requireInteraction: true,
+        silent: false,
+      }
+      new Notification(title, options)
+    })
+  } else {
+    // Fallback to regular notification
+    const options: any = {
+      body,
+      icon: '/icon-192.png',
+      tag,
+      silent: false,
+    }
+    new Notification(title, options)
   }
 }
