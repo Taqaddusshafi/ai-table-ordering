@@ -8,6 +8,7 @@ import OrderStatus from '@/components/customer/OrderStatus'
 import { generateSessionId } from '@/lib/utils/helpers'
 import toast from 'react-hot-toast'
 import { Sparkles } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 
 export default function TablePage() {
   const params = useParams()
@@ -34,6 +35,82 @@ export default function TablePage() {
       setSessionId(newSession)
     }
   }, [tableId])
+
+  // ✅ Notification System
+  useEffect(() => {
+    if (!sessionId || !tableId) return
+
+    // Request browser notification permission
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission()
+    }
+
+    const supabase = createClient()
+
+    // Subscribe to order status changes for this session
+    const ordersChannel = supabase
+      .channel(`orders_${sessionId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'orders',
+          filter: `session_id=eq.${sessionId}`,
+        },
+        (payload) => {
+          const order = payload.new as any
+          const oldOrder = payload.old as any
+
+          // Only notify if status actually changed
+          if (order.status !== oldOrder.status) {
+            const statusMessages: Record<string, { message: string; icon: string }> = {
+              preparing: { message: '👨‍🍳 Your order is being prepared!', icon: '👨‍🍳' },
+              ready: { message: '✅ Your order is ready! Please collect it.', icon: '✅' },
+              served: { message: '🍽️ Enjoy your meal!', icon: '🍽️' },
+              cancelled: { message: '❌ Order was cancelled', icon: '❌' },
+            }
+
+            const notification = statusMessages[order.status]
+            if (notification) {
+              // Show toast notification
+              toast.success(notification.message, {
+                duration: 5000,
+                icon: notification.icon,
+              })
+
+              // Show browser notification
+              if (Notification.permission === 'granted') {
+                new Notification('Order Update', {
+                  body: notification.message,
+                  icon: '/icon-192.png', // Add your app icon
+                  tag: order.id,
+                })
+              }
+
+              // Play notification sound
+              try {
+                const audio = new Audio('/notification.mp3') // Add sound file to public folder
+                audio.volume = 0.5
+                audio.play()
+              } catch (e) {
+                console.log('Sound play failed:', e)
+              }
+
+              // Auto-switch to orders tab if ready
+              if (order.status === 'ready') {
+                setTimeout(() => setActiveTab('orders'), 2000)
+              }
+            }
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(ordersChannel)
+    }
+  }, [sessionId, tableId])
 
   const handleOrderConfirmed = async (items: any[], totalAmount: number) => {
     try {
