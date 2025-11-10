@@ -151,41 +151,97 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// 🧩 PATCH — update order status from admin panel
+// 🧩 PATCH — update order status (admin) or cancel order (customer)
 export async function PATCH(request: NextRequest) {
   try {
-    const { orderId, status } = await request.json()
-    console.log('PATCH request received:', { orderId, status })
+    const { orderId, status, action } = await request.json()
+    console.log('PATCH request received:', { orderId, status, action })
 
-    if (!orderId || !status) {
+    if (!orderId) {
       return NextResponse.json(
-        { error: 'Missing orderId or status' },
+        { error: 'Missing orderId' },
         { status: 400 }
       )
     }
 
     const supabase = createClient()
 
-    // Get order details for notification
+    // Get order details
     const { data: order } = await supabase
       .from('orders')
-      .select('table_id, session_id, total_amount')
+      .select('table_id, session_id, total_amount, status, created_at')
       .eq('id', orderId)
       .single()
 
-    // Update order status
-    const { error: updateError } = await supabase
-      .from('orders')
-      .update({ status, updated_at: new Date().toISOString() })
-      .eq('id', orderId)
-
-    if (updateError) {
-      console.error('Supabase update error:', updateError)
-      throw updateError
+    if (!order) {
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 })
     }
 
-    // ✅ Send notification to customer based on status
-    if (order) {
+    // ✅ Customer cancellation logic
+    if (action === 'cancel') {
+      // Check if order can be cancelled (within 2 minutes and status is pending)
+      const orderTime = new Date(order.created_at).getTime()
+      const now = new Date().getTime()
+      const minutesElapsed = (now - orderTime) / 1000 / 60
+
+      if (minutesElapsed > 2) {
+        return NextResponse.json(
+          { error: 'Order can only be cancelled within 2 minutes of placement' },
+          { status: 400 }
+        )
+      }
+
+      if (order.status !== 'pending') {
+        return NextResponse.json(
+          { error: 'Order has already been processed and cannot be cancelled' },
+          { status: 400 }
+        )
+      }
+
+      // Cancel order
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+        .eq('id', orderId)
+
+      if (updateError) throw updateError
+
+      // Notify admin
+      await createNotification(supabase, {
+        userType: 'admin',
+        tableId: order.table_id,
+        sessionId: order.session_id,
+        orderId,
+        title: '❌ Order Cancelled',
+        message: `Order from Table #${order.table_id.slice(0, 8)} was cancelled by customer`,
+        type: 'warning',
+      })
+
+      // Notify customer
+      await createNotification(supabase, {
+        userType: 'customer',
+        tableId: order.table_id,
+        sessionId: order.session_id,
+        orderId,
+        title: '❌ Order Cancelled',
+        message: 'Your order has been cancelled successfully',
+        type: 'info',
+      })
+
+      return NextResponse.json({ success: true, message: 'Order cancelled' })
+    }
+
+    // ✅ Admin status update logic
+    if (status) {
+      // Update order status
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update({ status, updated_at: new Date().toISOString() })
+        .eq('id', orderId)
+
+      if (updateError) throw updateError
+
+      // Send notification to customer based on status
       const statusMessages: Record<string, { title: string; message: string; type: 'info' | 'success' | 'warning' }> = {
         preparing: {
           title: '👨‍🍳 Order Being Prepared',
@@ -204,7 +260,7 @@ export async function PATCH(request: NextRequest) {
         },
         cancelled: {
           title: '❌ Order Cancelled',
-          message: 'Your order has been cancelled. Please contact staff if you have questions.',
+          message: 'Your order has been cancelled by staff.',
           type: 'warning',
         },
       }
@@ -221,12 +277,147 @@ export async function PATCH(request: NextRequest) {
           type: notification.type,
         })
       }
+
+      console.log(`✅ Order ${orderId} updated to status: ${status}`)
+      return NextResponse.json({ success: true, status })
     }
 
-    console.log(`✅ Order ${orderId} updated to status: ${status}`)
-    return NextResponse.json({ success: true, status })
+    return NextResponse.json({ error: 'No action specified' }, { status: 400 })
   } catch (error: any) {
     console.error('PATCH Error:', error)
+    return NextResponse.json(
+      { error: 'Failed to update order', details: error.message },
+      { status: 500 }
+    )
+  }
+}
+
+// 🧩 DELETE — customer cancel order (alternative method)
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const orderId = searchParams.get('id')
+
+    if (!orderId) {
+      return NextResponse.json({ error: 'Order ID required' }, { status: 400 })
+    }
+
+    // Use PATCH with action='cancel' instead
+    return PATCH(new NextRequest(request.url, {
+      method: 'PATCH',
+      body: JSON.stringify({ orderId, action: 'cancel' }),
+      headers: { 'Content-Type': 'application/json' },
+    }))
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+}
+
+
+// Add this to your existing route.ts file
+
+// 🧩 PUT — Edit order items (customer within 2 minutes)
+export async function PUT(request: NextRequest) {
+  try {
+    const { orderId, items, totalAmount } = await request.json()
+    console.log('PUT request received:', { orderId, items, totalAmount })
+
+    if (!orderId || !items || !Array.isArray(items) || items.length === 0) {
+      return NextResponse.json(
+        { error: 'Missing orderId or items' },
+        { status: 400 }
+      )
+    }
+
+    const supabase = createClient()
+
+    // Get order details
+    const { data: order } = await supabase
+      .from('orders')
+      .select('table_id, session_id, status, created_at')
+      .eq('id', orderId)
+      .single()
+
+    if (!order) {
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+    }
+
+    // Check if order can be edited (within 2 minutes and status is pending)
+    const orderTime = new Date(order.created_at).getTime()
+    const now = new Date().getTime()
+    const minutesElapsed = (now - orderTime) / 1000 / 60
+
+    if (minutesElapsed > 2) {
+      return NextResponse.json(
+        { error: 'Order can only be edited within 2 minutes of placement' },
+        { status: 400 }
+      )
+    }
+
+    if (order.status !== 'pending') {
+      return NextResponse.json(
+        { error: 'Order has already been processed and cannot be edited' },
+        { status: 400 }
+      )
+    }
+
+    // Delete existing order items
+    await supabase
+      .from('order_items')
+      .delete()
+      .eq('order_id', orderId)
+
+    // Insert new order items
+    const orderItems = items.map((item: any) => ({
+      order_id: orderId,
+      menu_item_id: item.id,
+      quantity: item.quantity,
+      price: item.price,
+    }))
+
+    const { error: itemsError } = await supabase
+      .from('order_items')
+      .insert(orderItems)
+
+    if (itemsError) throw itemsError
+
+    // Update order total
+    const { error: updateError } = await supabase
+      .from('orders')
+      .update({ 
+        total_amount: totalAmount,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', orderId)
+
+    if (updateError) throw updateError
+
+    // Notify admin
+    await createNotification(supabase, {
+      userType: 'admin',
+      tableId: order.table_id,
+      sessionId: order.session_id,
+      orderId,
+      title: '🔄 Order Updated',
+      message: `Order from Table #${order.table_id.slice(0, 8)} was modified - New total: ₹${totalAmount}`,
+      type: 'info',
+    })
+
+    // Notify customer
+    await createNotification(supabase, {
+      userType: 'customer',
+      tableId: order.table_id,
+      sessionId: order.session_id,
+      orderId,
+      title: '✅ Order Updated',
+      message: 'Your order has been updated successfully',
+      type: 'success',
+    })
+
+    console.log(`✅ Order ${orderId} updated successfully`)
+    return NextResponse.json({ success: true, message: 'Order updated' })
+  } catch (error: any) {
+    console.error('PUT Error:', error)
     return NextResponse.json(
       { error: 'Failed to update order', details: error.message },
       { status: 500 }
