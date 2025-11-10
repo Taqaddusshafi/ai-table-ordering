@@ -3,7 +3,14 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import toast from 'react-hot-toast'
-import { Plus, Minus, X, ShoppingCart, Loader2 } from 'lucide-react'
+import { Plus, Minus, X, ShoppingCart, Loader2, CreditCard, Banknote } from 'lucide-react'
+
+// Declare Razorpay type
+declare global {
+  interface Window {
+    Razorpay: any
+  }
+}
 
 interface MenuItem {
   id: string
@@ -23,21 +30,41 @@ interface ManualMenuProps {
   tableId: string
   sessionId: string
   onOrderConfirmed: (items: any[], totalAmount: number) => void
+  onSwitchToOrders?: () => void
 }
 
 export default function ManualMenu({
   tableId,
   sessionId,
   onOrderConfirmed,
+  onSwitchToOrders,
 }: ManualMenuProps) {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [cart, setCart] = useState<CartItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedCategory, setSelectedCategory] = useState<string>('All')
+  const [showCheckoutModal, setShowCheckoutModal] = useState(false)
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'online'>('cash')
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false)
+  const [razorpayAvailable, setRazorpayAvailable] = useState(false)
 
   useEffect(() => {
     fetchMenu()
+    loadRazorpayScript()
+    checkRazorpayConfig()
   }, [])
+
+  const checkRazorpayConfig = () => {
+    const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID
+    setRazorpayAvailable(!!keyId && !keyId.includes('your_') && !keyId.includes('dummy'))
+  }
+
+  const loadRazorpayScript = () => {
+    const script = document.createElement('script')
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+    script.async = true
+    document.body.appendChild(script)
+  }
 
   const fetchMenu = async () => {
     const supabase = createClient()
@@ -102,12 +129,16 @@ export default function ManualMenu({
 
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0)
 
-  const handlePlaceOrder = () => {
+  const handleOpenCheckout = () => {
     if (cart.length === 0) {
       toast.error('Your cart is empty!')
       return
     }
+    setShowCheckoutModal(true)
+  }
 
+  // Create order in database
+  const createOrderInDatabase = async () => {
     const orderItems = cart.map((item) => ({
       id: item.id,
       name: item.name,
@@ -115,8 +146,136 @@ export default function ManualMenu({
       quantity: item.quantity,
     }))
 
-    onOrderConfirmed(orderItems, totalAmount)
-    setCart([])
+    try {
+      const response = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tableId,
+          sessionId,
+          items: orderItems,
+          totalAmount,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        return result.data.id // Return order ID
+      } else {
+        throw new Error(result.error || 'Failed to create order')
+      }
+    } catch (error: any) {
+      throw error
+    }
+  }
+
+  // Handle Razorpay payment
+  const handleRazorpayPayment = async (orderId: string) => {
+    try {
+      // Create Razorpay order
+      const response = await fetch('/api/payment/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: totalAmount,
+          orderId: orderId,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!result.success) {
+        throw new Error(result.error || 'Payment gateway not available')
+      }
+
+      const razorpayOrder = result.data
+
+      // Initialize Razorpay
+      const options = {
+        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+        amount: razorpayOrder.amount,
+        currency: razorpayOrder.currency,
+        name: 'Restaurant Order',
+        description: `Table #${tableId.slice(0, 8)}`,
+        order_id: razorpayOrder.id,
+        handler: async function (response: any) {
+          // Payment successful
+          toast.success('Payment successful! 🎉')
+          
+          // Update order with payment info
+          await fetch('/api/orders/payment', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              orderId: orderId,
+              paymentStatus: 'paid',
+              paymentId: response.razorpay_payment_id,
+            }),
+          })
+
+          // Clear cart and close modal
+          setCart([])
+          setShowCheckoutModal(false)
+          setIsProcessingPayment(false)
+          
+          // Switch to orders tab
+          toast.success('Order placed successfully!', { icon: '🎉', duration: 3000 })
+          if (onSwitchToOrders) {
+            setTimeout(() => onSwitchToOrders(), 800)
+          }
+        },
+        prefill: {
+          name: 'Customer',
+          email: 'customer@example.com',
+          contact: '9999999999',
+        },
+        theme: {
+          color: '#3B82F6',
+        },
+        modal: {
+          ondismiss: function () {
+            toast.error('Payment cancelled')
+            setIsProcessingPayment(false)
+          },
+        },
+      }
+
+      const razorpay = new window.Razorpay(options)
+      razorpay.open()
+    } catch (error: any) {
+      console.error('Razorpay error:', error)
+      toast.error(error.message || 'Payment failed')
+      setIsProcessingPayment(false)
+    }
+  }
+
+  const handleConfirmOrder = async () => {
+    setIsProcessingPayment(true)
+
+    try {
+      // Create order in database first
+      const orderId = await createOrderInDatabase()
+
+      if (paymentMethod === 'online') {
+        // Handle online payment with Razorpay
+        await handleRazorpayPayment(orderId)
+      } else {
+        // Handle cash payment
+        toast.success('Order placed! Please pay at counter', { icon: '💵', duration: 3000 })
+        setCart([])
+        setShowCheckoutModal(false)
+        setIsProcessingPayment(false)
+        
+        // Switch to orders tab after short delay
+        if (onSwitchToOrders) {
+          setTimeout(() => onSwitchToOrders(), 800)
+        }
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to place order')
+      setIsProcessingPayment(false)
+    }
   }
 
   if (isLoading) {
@@ -251,7 +410,6 @@ export default function ManualMenu({
       {cart.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 sm:hidden bg-white border-t-2 border-gray-200 shadow-2xl z-50 animate-slide-up backdrop-blur-sm bg-opacity-95">
           <div className="px-4 py-3">
-            {/* Cart Summary */}
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <div className="relative">
@@ -266,13 +424,11 @@ export default function ManualMenu({
               </div>
               <span className="font-bold text-xl text-blue-600">₹{totalAmount}</span>
             </div>
-
-            {/* Place Order Button */}
             <button
-              onClick={handlePlaceOrder}
+              onClick={handleOpenCheckout}
               className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3.5 rounded-xl font-bold text-base hover:shadow-xl transition-all active:scale-95"
             >
-              Place Order 🎉
+              Continue to Payment 🎉
             </button>
           </div>
         </div>
@@ -291,7 +447,6 @@ export default function ManualMenu({
             <h2 className="text-lg sm:text-xl font-bold text-gray-900">Your Cart</h2>
           </div>
 
-          {/* Cart Items */}
           <div className="space-y-3 mb-4 max-h-64 sm:max-h-80 overflow-y-auto">
             {cart.map((item) => (
               <div
@@ -333,7 +488,6 @@ export default function ManualMenu({
             ))}
           </div>
 
-          {/* Total & Checkout */}
           <div className="border-t-2 border-blue-100 pt-4">
             <div className="flex justify-between items-center mb-4">
               <span className="font-bold text-lg sm:text-xl text-gray-900">Total:</span>
@@ -342,11 +496,105 @@ export default function ManualMenu({
               </span>
             </div>
             <button
-              onClick={handlePlaceOrder}
+              onClick={handleOpenCheckout}
               className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-xl font-bold text-lg hover:shadow-xl transition-all active:scale-95"
             >
-              Place Order 🎉
+              Continue to Payment 🎉
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Checkout Modal */}
+      {showCheckoutModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 animate-fade-in">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Choose Payment Method</h2>
+            
+            <div className="bg-gray-50 rounded-lg p-4 mb-6">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-gray-600">Items</span>
+                <span className="font-semibold">{totalItems}</span>
+              </div>
+              <div className="flex justify-between items-center text-lg font-bold">
+                <span>Total</span>
+                <span className="text-blue-600">₹{totalAmount}</span>
+              </div>
+            </div>
+
+            <div className="space-y-3 mb-6">
+              <button
+                onClick={() => setPaymentMethod('cash')}
+                disabled={isProcessingPayment}
+                className={`w-full p-4 rounded-xl border-2 transition-all flex items-center gap-3 ${
+                  paymentMethod === 'cash'
+                    ? 'border-blue-600 bg-blue-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                } disabled:opacity-50`}
+              >
+                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
+                  paymentMethod === 'cash' ? 'border-blue-600' : 'border-gray-300'
+                }`}>
+                  {paymentMethod === 'cash' && (
+                    <div className="w-3 h-3 rounded-full bg-blue-600"></div>
+                  )}
+                </div>
+                <Banknote className="w-6 h-6 text-gray-700" />
+                <div className="text-left flex-1">
+                  <p className="font-bold text-gray-900">Pay at Counter</p>
+                  <p className="text-xs text-gray-500">Pay with cash when collecting order</p>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setPaymentMethod('online')}
+                disabled={isProcessingPayment || !razorpayAvailable}
+                className={`w-full p-4 rounded-xl border-2 transition-all flex items-center gap-3 ${
+                  paymentMethod === 'online'
+                    ? 'border-blue-600 bg-blue-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
+                  paymentMethod === 'online' ? 'border-blue-600' : 'border-gray-300'
+                }`}>
+                  {paymentMethod === 'online' && (
+                    <div className="w-3 h-3 rounded-full bg-blue-600"></div>
+                  )}
+                </div>
+                <CreditCard className="w-6 h-6 text-gray-700" />
+                <div className="text-left flex-1">
+                  <p className="font-bold text-gray-900">Pay Online</p>
+                  <p className="text-xs text-gray-500">
+                    {razorpayAvailable ? 'Pay now with card/UPI (Razorpay)' : 'Not available yet'}
+                  </p>
+                </div>
+              </button>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowCheckoutModal(false)}
+                disabled={isProcessingPayment}
+                className="flex-1 px-6 py-3 border-2 border-gray-300 rounded-xl font-bold text-gray-700 hover:bg-gray-50 transition-all disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmOrder}
+                disabled={isProcessingPayment}
+                className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-bold hover:shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isProcessingPayment ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  'Confirm Order'
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -369,6 +617,19 @@ export default function ManualMenu({
         }
         .animate-slide-up {
           animation: slide-up 0.3s ease-out;
+        }
+        @keyframes fade-in {
+          from {
+            opacity: 0;
+            transform: scale(0.95);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+        .animate-fade-in {
+          animation: fade-in 0.2s ease-out;
         }
       `}</style>
     </div>

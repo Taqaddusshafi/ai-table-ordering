@@ -21,6 +21,7 @@ export async function POST(request: NextRequest) {
       .digest('hex')
 
     if (signature !== expectedSignature) {
+      console.error('Invalid webhook signature')
       return NextResponse.json(
         { error: 'Invalid signature' },
         { status: 400 }
@@ -30,21 +31,34 @@ export async function POST(request: NextRequest) {
     const payload = JSON.parse(body)
     const { event, payload: eventPayload } = payload
 
+    console.log('Razorpay webhook event:', event)
+
     // Handle payment success
     if (event === 'payment.captured') {
-      const { order_id, id: payment_id } = eventPayload.payment.entity
+      const payment = eventPayload.payment.entity
+      const orderId = payment.notes?.order_id || payment.order_id
+      const paymentId = payment.id
 
-      const supabase = await createClient() // FIXED: Added await
+      console.log('Payment captured:', { orderId, paymentId })
+
+      const supabase = createClient()
+
+      // Get order details for notification
+      const { data: order } = await supabase
+        .from('orders')
+        .select('table_id, session_id, total_amount')
+        .eq('id', orderId)
+        .single()
 
       // Update order with payment info
       const { error } = await supabase
         .from('orders')
         .update({
-          payment_id,
+          payment_id: paymentId,
           payment_status: 'paid',
           updated_at: new Date().toISOString(),
         })
-        .eq('id', order_id)
+        .eq('id', orderId)
 
       if (error) {
         console.error('Error updating order payment:', error)
@@ -53,6 +67,52 @@ export async function POST(request: NextRequest) {
           { status: 500 }
         )
       }
+
+      // Send notification to customer
+      if (order) {
+        await supabase.from('notifications').insert({
+          user_type: 'customer',
+          table_id: order.table_id,
+          session_id: order.session_id,
+          order_id: orderId,
+          title: '💰 Payment Successful',
+          message: `Your payment of ₹${order.total_amount} was successful. Thank you!`, // ✅ FIXED: Removed /100
+          type: 'success',
+          is_read: false,
+        })
+
+        // Notify admin
+        await supabase.from('notifications').insert({
+          user_type: 'admin',
+          table_id: order.table_id,
+          session_id: order.session_id,
+          order_id: orderId,
+          title: '💳 Payment Received',
+          message: `Payment of ₹${order.total_amount} received for Table #${order.table_id.slice(0, 8)}`, // ✅ FIXED: Removed /100
+          type: 'success',
+          is_read: false,
+        })
+      }
+
+      console.log('✅ Payment processed successfully')
+    }
+
+    // Handle payment failure
+    if (event === 'payment.failed') {
+      const payment = eventPayload.payment.entity
+      const orderId = payment.notes?.order_id || payment.order_id
+
+      const supabase = createClient()
+
+      await supabase
+        .from('orders')
+        .update({
+          payment_status: 'failed',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', orderId)
+
+      console.log('❌ Payment failed for order:', orderId)
     }
 
     return NextResponse.json({ success: true })

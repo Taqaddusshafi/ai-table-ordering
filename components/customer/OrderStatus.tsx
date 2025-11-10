@@ -14,10 +14,20 @@ interface OrderStatusProps {
 export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
   const [orders, setOrders] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null) // ✅ FIXED
+  const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null)
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null)
   const [editedItems, setEditedItems] = useState<any[]>([])
   const [savingEdit, setSavingEdit] = useState(false)
+  const [currentTime, setCurrentTime] = useState(Date.now())
+
+  // Update current time every second for countdown
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(Date.now())
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [])
 
   useEffect(() => {
     if (!tableId || !sessionId) return
@@ -66,16 +76,14 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
     if (order.status !== 'pending') return false
     
     const orderTime = new Date(order.created_at).getTime()
-    const now = new Date().getTime()
-    const minutesElapsed = (now - orderTime) / 1000 / 60
+    const minutesElapsed = (currentTime - orderTime) / 1000 / 60
     
     return minutesElapsed <= 2
   }
 
   const getTimeRemaining = (order: any) => {
     const orderTime = new Date(order.created_at).getTime()
-    const now = new Date().getTime()
-    const minutesElapsed = (now - orderTime) / 1000 / 60
+    const minutesElapsed = (currentTime - orderTime) / 1000 / 60
     const secondsRemaining = Math.max(0, Math.floor((2 - minutesElapsed) * 60))
     
     const mins = Math.floor(secondsRemaining / 60)
@@ -241,6 +249,7 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
         const StatusIcon = statusConfig.icon
         const canModify = canModifyOrder(order)
         const isEditing = editingOrderId === order.id
+        const timeRemaining = getTimeRemaining(order)
 
         const displayItems = isEditing ? editedItems : order.order_items
         const displayTotal = isEditing 
@@ -274,13 +283,13 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
 
             {/* Order Body */}
             <div className="p-4">
-              {/* Modify Warning */}
+              {/* Modify Warning - Real-time countdown */}
               {canModify && !isEditing && (
-                <div className="mb-3 bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
+                <div className="mb-3 bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2 animate-pulse">
                   <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
                     <p className="text-sm font-semibold text-blue-800">
-                      Time remaining: {getTimeRemaining(order)}
+                      Time remaining: <span className="text-lg font-mono">{timeRemaining}</span>
                     </p>
                     <p className="text-xs text-blue-700">
                       You can edit or cancel this order within 2 minutes
@@ -431,7 +440,7 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
                         >
                           {cancellingOrderId === order.id ? (
                             <>
-                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <Loader2 className="w-4 h-4" animate-spin />
                               Cancelling...
                             </>
                           ) : (

@@ -83,16 +83,16 @@ export default function TablePage() {
               if (Notification.permission === 'granted') {
                 new Notification('Order Update', {
                   body: notification.message,
-                  icon: '/icon-192.png', // Add your app icon
+                  icon: '/icon-192.png',
                   tag: order.id,
                 })
               }
 
               // Play notification sound
               try {
-                const audio = new Audio('/notification.mp3') // Add sound file to public folder
+                const audio = new Audio('/notification.mp3')
                 audio.volume = 0.5
-                audio.play()
+                audio.play().catch(() => {})
               } catch (e) {
                 console.log('Sound play failed:', e)
               }
@@ -240,6 +240,7 @@ export default function TablePage() {
             tableId={tableId}
             sessionId={sessionId}
             onOrderConfirmed={handleOrderConfirmed}
+            onSwitchToOrders={() => setActiveTab('orders')} // ✅ ADDED
           />
         )}
 
