@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import toast from 'react-hot-toast'
-import { Plus, Minus, X, ShoppingCart, Loader2, CreditCard, Banknote } from 'lucide-react'
+import { Plus, Minus, X, ShoppingCart, Loader2, CreditCard, Banknote, Search } from 'lucide-react'
 
 // Declare Razorpay type
 declare global {
@@ -47,6 +47,7 @@ export default function ManualMenu({
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'online'>('cash')
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
   const [razorpayAvailable, setRazorpayAvailable] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
 
   useEffect(() => {
     fetchMenu()
@@ -84,10 +85,25 @@ export default function ManualMenu({
 
   const categories = ['All', ...new Set(menuItems.map((item) => item.category))]
 
-  const filteredItems =
-    selectedCategory === 'All'
-      ? menuItems
-      : menuItems.filter((item) => item.category === selectedCategory)
+  // Filter items by search query and category
+  const filteredItems = menuItems.filter((item) => {
+    // Apply category filter
+    if (selectedCategory !== 'All' && item.category !== selectedCategory) {
+      return false
+    }
+
+    // Apply search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase()
+      return (
+        item.name.toLowerCase().includes(query) ||
+        item.description?.toLowerCase().includes(query) ||
+        item.category?.toLowerCase().includes(query)
+      )
+    }
+
+    return true
+  })
 
   const addToCart = (item: MenuItem) => {
     setCart((prev) => {
@@ -291,6 +307,33 @@ export default function ManualMenu({
 
   return (
     <div className="pb-32 sm:pb-6">
+      {/* Search Bar */}
+      <div className="mb-4 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search menu items..."
+            className="w-full pl-10 pr-10 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-all text-sm sm:text-base bg-white shadow-sm"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 p-1 hover:bg-gray-100 rounded-full transition-colors"
+            >
+              <X className="w-4 h-4 text-gray-400" />
+            </button>
+          )}
+        </div>
+        {searchQuery && (
+          <p className="text-xs text-gray-500 mt-2">
+            Found {filteredItems.length} item{filteredItems.length !== 1 ? 's' : ''}
+          </p>
+        )}
+      </div>
+
       {/* Sticky Category Filter */}
       <div className="sticky top-0 sm:top-0 z-30 bg-gradient-to-b from-blue-50 via-blue-50 to-transparent pt-2 pb-4 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 mb-4">
         <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-2">
@@ -302,7 +345,10 @@ export default function ManualMenu({
             return (
               <button
                 key={category}
-                onClick={() => setSelectedCategory(category)}
+                onClick={() => {
+                  setSelectedCategory(category)
+                  setSearchQuery('') // Clear search when changing category
+                }}
                 className={`flex-shrink-0 px-4 py-2.5 rounded-full text-xs sm:text-sm font-bold transition-all duration-200 ${
                   selectedCategory === category
                     ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg scale-105 ring-2 ring-blue-200'
@@ -351,9 +397,14 @@ export default function ManualMenu({
 
               {/* Content */}
               <div className="p-3 sm:p-4">
-                <h3 className="font-bold text-base sm:text-lg text-gray-900 mb-1 line-clamp-1">
-                  {item.name}
-                </h3>
+                <div className="flex items-start justify-between gap-2 mb-1">
+                  <h3 className="font-bold text-base sm:text-lg text-gray-900 line-clamp-1 flex-1">
+                    {item.name}
+                  </h3>
+                  <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full whitespace-nowrap">
+                    {item.category}
+                  </span>
+                </div>
                 <p className="text-xs sm:text-sm text-gray-600 mb-3 line-clamp-2 h-8 sm:h-10">
                   {item.description || 'Delicious item'}
                 </p>
@@ -401,8 +452,21 @@ export default function ManualMenu({
       {/* Empty State */}
       {filteredItems.length === 0 && (
         <div className="text-center py-12 sm:py-16">
-          <p className="text-5xl sm:text-6xl mb-4">🍽️</p>
-          <p className="text-gray-600 text-sm sm:text-base">No items in this category</p>
+          <Search className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+          <p className="text-gray-600 text-base sm:text-lg font-semibold mb-1">
+            {searchQuery ? 'No items found' : 'No items in this category'}
+          </p>
+          <p className="text-sm text-gray-500">
+            {searchQuery ? 'Try searching with different keywords' : 'Browse other categories'}
+          </p>
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="mt-4 text-blue-600 font-semibold text-sm hover:underline"
+            >
+              Clear search
+            </button>
+          )}
         </div>
       )}
 

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate } from '@/lib/utils/helpers'
 import toast from 'react-hot-toast'
-import { Clock, CheckCircle, Loader2, Package, CreditCard, Receipt, XCircle, AlertCircle, Edit, Plus, Minus, X, Save, ShoppingCart } from 'lucide-react'
+import { Clock, CheckCircle, Loader2, Package, CreditCard, Receipt, XCircle, AlertCircle, Edit, Plus, Minus, X, Save, ShoppingCart, Search } from 'lucide-react'
 
 interface OrderStatusProps {
   tableId: string
@@ -21,6 +21,7 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
   const [currentTime, setCurrentTime] = useState(Date.now())
   const [menuItems, setMenuItems] = useState<any[]>([])
   const [showAddItemModal, setShowAddItemModal] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
 
   // Update current time every second for countdown
   useEffect(() => {
@@ -182,6 +183,7 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
         setEditingOrderId(null)
         setEditedItems([])
         setShowAddItemModal(false)
+        setSearchQuery('')
       } else {
         throw new Error(result.error || 'Failed to update order')
       }
@@ -196,6 +198,7 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
     setEditingOrderId(null)
     setEditedItems([])
     setShowAddItemModal(false)
+    setSearchQuery('')
   }
 
   const handleCancelOrder = async (orderId: string) => {
@@ -259,6 +262,13 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
     }
     return configs[status] || configs.pending
   }
+
+  // Filter menu items based on search query
+  const filteredMenuItems = menuItems.filter(item =>
+    item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    item.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    item.category?.toLowerCase().includes(searchQuery.toLowerCase())
+  )
 
   if (isLoading) {
     return (
@@ -516,68 +526,122 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
         )
       })}
 
-      {/* Add Items Modal */}
+      {/* Add Items Modal with Search */}
       {showAddItemModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
-            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-              <h3 className="text-xl font-bold text-gray-900">Add Items to Order</h3>
-              <button
-                onClick={() => setShowAddItemModal(false)}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="p-4 border-b border-gray-200">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-xl font-bold text-gray-900">Add Items to Order</h3>
+                <button
+                  onClick={() => {
+                    setShowAddItemModal(false)
+                    setSearchQuery('')
+                  }}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Search Bar */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search items by name, description, or category..."
+                  className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none transition-colors text-sm"
+                  autoFocus
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 p-1 hover:bg-gray-100 rounded-full transition-colors"
+                  >
+                    <X className="w-4 h-4 text-gray-400" />
+                  </button>
+                )}
+              </div>
+
+              {/* Results Count */}
+              {searchQuery && (
+                <p className="text-xs text-gray-500 mt-2">
+                  Found {filteredMenuItems.length} item{filteredMenuItems.length !== 1 ? 's' : ''}
+                </p>
+              )}
             </div>
             
+            {/* Menu Items */}
             <div className="flex-1 overflow-y-auto p-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {menuItems.map((item) => {
-                  const inOrder = editedItems.find(i => i.id === item.id)
-                  
-                  return (
-                    <div
-                      key={item.id}
-                      className={`border-2 rounded-lg p-3 transition-all ${
-                        inOrder ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-semibold text-gray-900 text-sm">
-                            {item.name}
-                          </h4>
-                          <p className="text-xs text-gray-500 line-clamp-1 mb-1">
-                            {item.description}
-                          </p>
-                          <p className="text-sm font-bold text-blue-600">
-                            ₹{item.price}
-                          </p>
-                          {inOrder && (
-                            <p className="text-xs text-blue-600 font-semibold mt-1">
-                              In order: {inOrder.quantity}×
+              {filteredMenuItems.length === 0 ? (
+                <div className="text-center py-12">
+                  <Search className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500">
+                    {searchQuery ? 'No items found matching your search' : 'No items available'}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {filteredMenuItems.map((item) => {
+                    const inOrder = editedItems.find(i => i.id === item.id)
+                    
+                    return (
+                      <div
+                        key={item.id}
+                        className={`border-2 rounded-lg p-3 transition-all ${
+                          inOrder ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-semibold text-gray-900 text-sm">
+                              {item.name}
+                            </h4>
+                            <p className="text-xs text-gray-500 line-clamp-1 mb-1">
+                              {item.description}
                             </p>
-                          )}
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-bold text-blue-600">
+                                ₹{item.price}
+                              </p>
+                              <span className="text-xs text-gray-400">•</span>
+                              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                                {item.category}
+                              </span>
+                            </div>
+                            {inOrder && (
+                              <p className="text-xs text-blue-600 font-semibold mt-1">
+                                In order: {inOrder.quantity}×
+                              </p>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => handleAddItemToOrder(item)}
+                            className="bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700 transition-all active:scale-95 flex-shrink-0"
+                          >
+                            <Plus className="w-4 h-4" />
+                          </button>
                         </div>
-                        <button
-                          onClick={() => handleAddItemToOrder(item)}
-                          className="bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700 transition-all active:scale-95"
-                        >
-                          <Plus className="w-4 h-4" />
-                        </button>
                       </div>
-                    </div>
-                  )
-                })}
-              </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
 
+            {/* Footer */}
             <div className="p-4 border-t border-gray-200">
               <button
-                onClick={() => setShowAddItemModal(false)}
+                onClick={() => {
+                  setShowAddItemModal(false)
+                  setSearchQuery('')
+                }}
                 className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition-all"
               >
-                Done
+                Done ({editedItems.length} items)
               </button>
             </div>
           </div>
