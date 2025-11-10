@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate } from '@/lib/utils/helpers'
 import toast from 'react-hot-toast'
-import { Clock, CheckCircle, Loader2, Package, CreditCard, Receipt, XCircle, AlertCircle, Edit, Plus, Minus, X, Save } from 'lucide-react'
+import { Clock, CheckCircle, Loader2, Package, CreditCard, Receipt, XCircle, AlertCircle, Edit, Plus, Minus, X, Save, ShoppingCart } from 'lucide-react'
 
 interface OrderStatusProps {
   tableId: string
@@ -19,6 +19,8 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
   const [editedItems, setEditedItems] = useState<any[]>([])
   const [savingEdit, setSavingEdit] = useState(false)
   const [currentTime, setCurrentTime] = useState(Date.now())
+  const [menuItems, setMenuItems] = useState<any[]>([])
+  const [showAddItemModal, setShowAddItemModal] = useState(false)
 
   // Update current time every second for countdown
   useEffect(() => {
@@ -72,6 +74,26 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
     }
   }, [tableId, sessionId])
 
+  // Fetch menu items when edit mode is activated
+  useEffect(() => {
+    if (editingOrderId) {
+      fetchMenuItems()
+    }
+  }, [editingOrderId])
+
+  const fetchMenuItems = async () => {
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('menu_items')
+      .select('*')
+      .eq('available', true)
+      .order('name')
+
+    if (!error && data) {
+      setMenuItems(data)
+    }
+  }
+
   const canModifyOrder = (order: any) => {
     if (order.status !== 'pending') return false
     
@@ -112,6 +134,27 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
     )
   }
 
+  const handleAddItemToOrder = (menuItem: any) => {
+    const existing = editedItems.find(i => i.id === menuItem.id)
+    
+    if (existing) {
+      // Increase quantity if already exists
+      setEditedItems(prev =>
+        prev.map(i => i.id === menuItem.id ? { ...i, quantity: i.quantity + 1 } : i)
+      )
+      toast.success(`Increased ${menuItem.name} quantity`)
+    } else {
+      // Add new item
+      setEditedItems(prev => [...prev, {
+        id: menuItem.id,
+        name: menuItem.name,
+        price: menuItem.price,
+        quantity: 1,
+      }])
+      toast.success(`Added ${menuItem.name}`)
+    }
+  }
+
   const handleSaveEdit = async (orderId: string) => {
     if (editedItems.length === 0) {
       toast.error('Order must have at least one item')
@@ -138,6 +181,7 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
         toast.success('Order updated successfully!')
         setEditingOrderId(null)
         setEditedItems([])
+        setShowAddItemModal(false)
       } else {
         throw new Error(result.error || 'Failed to update order')
       }
@@ -151,6 +195,7 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
   const handleCancelEdit = () => {
     setEditingOrderId(null)
     setEditedItems([])
+    setShowAddItemModal(false)
   }
 
   const handleCancelOrder = async (orderId: string) => {
@@ -300,9 +345,20 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
 
               {/* Order Items */}
               <div className="mb-3">
-                <p className="text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                  Items:
-                </p>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs sm:text-sm font-semibold text-gray-700">
+                    Items:
+                  </p>
+                  {isEditing && (
+                    <button
+                      onClick={() => setShowAddItemModal(true)}
+                      className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1 hover:bg-blue-700 transition-all"
+                    >
+                      <Plus className="w-3 h-3" />
+                      Add Items
+                    </button>
+                  )}
+                </div>
                 <div className="space-y-2">
                   {isEditing ? (
                     // Edit Mode
@@ -440,7 +496,7 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
                         >
                           {cancellingOrderId === order.id ? (
                             <>
-                              <Loader2 className="w-4 h-4" animate-spin />
+                              <Loader2 className="w-4 h-4 animate-spin" />
                               Cancelling...
                             </>
                           ) : (
@@ -459,6 +515,74 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
           </div>
         )
       })}
+
+      {/* Add Items Modal */}
+      {showAddItemModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-xl font-bold text-gray-900">Add Items to Order</h3>
+              <button
+                onClick={() => setShowAddItemModal(false)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {menuItems.map((item) => {
+                  const inOrder = editedItems.find(i => i.id === item.id)
+                  
+                  return (
+                    <div
+                      key={item.id}
+                      className={`border-2 rounded-lg p-3 transition-all ${
+                        inOrder ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-semibold text-gray-900 text-sm">
+                            {item.name}
+                          </h4>
+                          <p className="text-xs text-gray-500 line-clamp-1 mb-1">
+                            {item.description}
+                          </p>
+                          <p className="text-sm font-bold text-blue-600">
+                            ₹{item.price}
+                          </p>
+                          {inOrder && (
+                            <p className="text-xs text-blue-600 font-semibold mt-1">
+                              In order: {inOrder.quantity}×
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => handleAddItemToOrder(item)}
+                          className="bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700 transition-all active:scale-95"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-gray-200">
+              <button
+                onClick={() => setShowAddItemModal(false)}
+                className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition-all"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
