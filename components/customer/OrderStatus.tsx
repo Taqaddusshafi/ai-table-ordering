@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate } from '@/lib/utils/helpers'
 import toast from 'react-hot-toast'
-import { Clock, CheckCircle, Loader2, Package, CreditCard, Receipt, XCircle, AlertCircle, Edit, Plus, Minus, X, Save, ShoppingCart, Search } from 'lucide-react'
+import { Clock, CheckCircle, Loader2, Package, CreditCard, Receipt, XCircle, AlertCircle, Edit, Plus, Minus, X, Save, ShoppingCart, Search, Bell } from 'lucide-react'
 
 interface OrderStatusProps {
   tableId: string
@@ -22,6 +22,7 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
   const [menuItems, setMenuItems] = useState<any[]>([])
   const [showAddItemModal, setShowAddItemModal] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [sendingReminderId, setSendingReminderId] = useState<string | null>(null)
 
   // Update current time every second for countdown
   useEffect(() => {
@@ -115,6 +116,53 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
+  const canSendReminder = (order: any) => {
+    if (order.status !== 'pending') return false
+    
+    const lastTime = order.last_reminder_at || order.created_at
+    const timeSince = (currentTime - new Date(lastTime).getTime()) / 1000 / 60
+    
+    return timeSince >= 10
+  }
+
+  const getTimeUntilNextReminder = (order: any) => {
+    const lastTime = order.last_reminder_at || order.created_at
+    const timeSince = (currentTime - new Date(lastTime).getTime()) / 1000 / 60
+    const timeLeft = Math.max(0, 10 - timeSince)
+    
+    const mins = Math.floor(timeLeft)
+    const secs = Math.floor((timeLeft - mins) * 60)
+    
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
+  const handleSendReminder = async (orderId: string) => {
+    setSendingReminderId(orderId)
+    
+    try {
+      const response = await fetch('/api/orders/remind', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId }),
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        const ordinal = result.reminderCount === 1 ? 'st' : result.reminderCount === 2 ? 'nd' : result.reminderCount === 3 ? 'rd' : 'th'
+        toast.success(`✅ Reminder sent to admin! (${result.reminderCount}${ordinal} reminder)`, {
+          duration: 4000
+        })
+      } else {
+        throw new Error(result.error || 'Failed to send reminder')
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to send reminder')
+    } finally {
+      setSendingReminderId(null)
+    }
+  }
+
   const handleEditOrder = (order: any) => {
     setEditingOrderId(order.id)
     setEditedItems(order.order_items.map((item: any) => ({
@@ -139,13 +187,11 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
     const existing = editedItems.find(i => i.id === menuItem.id)
     
     if (existing) {
-      // Increase quantity if already exists
       setEditedItems(prev =>
         prev.map(i => i.id === menuItem.id ? { ...i, quantity: i.quantity + 1 } : i)
       )
       toast.success(`Increased ${menuItem.name} quantity`)
     } else {
-      // Add new item
       setEditedItems(prev => [...prev, {
         id: menuItem.id,
         name: menuItem.name,
@@ -263,7 +309,6 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
     return configs[status] || configs.pending
   }
 
-  // Filter menu items based on search query
   const filteredMenuItems = menuItems.filter(item =>
     item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     item.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -371,7 +416,6 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
                 </div>
                 <div className="space-y-2">
                   {isEditing ? (
-                    // Edit Mode
                     editedItems.map((item: any) => (
                       <div
                         key={item.id}
@@ -408,7 +452,6 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
                       </div>
                     ))
                   ) : (
-                    // View Mode
                     order.order_items?.map((item: any) => (
                       <div
                         key={item.id}
@@ -441,10 +484,61 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
                 </span>
               </div>
 
+              {/* Reminder Button for Pending Orders */}
+              {order.status === 'pending' && !isEditing && (
+                <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Bell className="w-4 h-4 text-gray-600" />
+                      <span className="text-xs font-semibold text-gray-600">
+                        Admin Reminder
+                      </span>
+                    </div>
+                    {order.reminder_count > 0 && (
+                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">
+                        {order.reminder_count} sent
+                      </span>
+                    )}
+                  </div>
+                  
+                  {canSendReminder(order) ? (
+                    <button
+                      onClick={() => handleSendReminder(order.id)}
+                      disabled={sendingReminderId === order.id}
+                      className="w-full bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 rounded-lg font-semibold text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
+                    >
+                      {sendingReminderId === order.id ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        <>
+                          <Bell className="w-4 h-4" />
+                          Remind Admin
+                        </>
+                      )}
+                    </button>
+                  ) : (
+                    <div className="text-center py-2">
+                      <p className="text-xs text-gray-500">
+                        Next reminder available in{' '}
+                        <span className="font-mono font-semibold text-gray-700">
+                          {getTimeUntilNextReminder(order)}
+                        </span>
+                      </p>
+                    </div>
+                  )}
+                  
+                  <p className="text-xs text-gray-500 mt-2 text-center">
+                    Send a notification to admin if order is taking too long
+                  </p>
+                </div>
+              )}
+
               {/* Actions */}
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                 {isEditing ? (
-                  // Edit Mode Actions
                   <>
                     <button
                       onClick={() => handleSaveEdit(order.id)}
@@ -472,9 +566,7 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
                     </button>
                   </>
                 ) : (
-                  // View Mode Actions
                   <>
-                    {/* Payment Status */}
                     <div className="flex items-center gap-2 flex-1">
                       <CreditCard className="w-4 h-4 text-gray-400" />
                       {order.payment_status === 'paid' ? (
@@ -526,11 +618,10 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
         )
       })}
 
-      {/* Add Items Modal with Search */}
+      {/* Add Items Modal */}
       {showAddItemModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col">
-            {/* Header */}
             <div className="p-4 border-b border-gray-200">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-xl font-bold text-gray-900">Add Items to Order</h3>
@@ -545,7 +636,6 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
                 </button>
               </div>
 
-              {/* Search Bar */}
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
@@ -566,7 +656,6 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
                 )}
               </div>
 
-              {/* Results Count */}
               {searchQuery && (
                 <p className="text-xs text-gray-500 mt-2">
                   Found {filteredMenuItems.length} item{filteredMenuItems.length !== 1 ? 's' : ''}
@@ -574,7 +663,6 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
               )}
             </div>
             
-            {/* Menu Items */}
             <div className="flex-1 overflow-y-auto p-4">
               {filteredMenuItems.length === 0 ? (
                 <div className="text-center py-12">
@@ -632,7 +720,6 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
               )}
             </div>
 
-            {/* Footer */}
             <div className="p-4 border-t border-gray-200">
               <button
                 onClick={() => {

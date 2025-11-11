@@ -7,7 +7,7 @@ import Button from '@/components/ui/Button'
 import { formatCurrency, formatDate } from '@/lib/utils/helpers'
 import type { Order } from '@/types'
 import toast from 'react-hot-toast'
-import { DollarSign, Loader2, CheckCircle, Calendar, TrendingUp, Clock } from 'lucide-react'
+import { DollarSign, Loader2, CheckCircle, Calendar, TrendingUp, Clock, Bell, BellRing } from 'lucide-react'
 
 export default function OrdersTable() {
   const [orders, setOrders] = useState<Order[]>([])
@@ -25,6 +25,13 @@ export default function OrdersTable() {
     ready: 0,
     served: 0,
   })
+
+  // Request notification permission on mount
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission()
+    }
+  }, [])
 
   useEffect(() => {
     const supabase = createClient()
@@ -96,8 +103,19 @@ export default function OrdersTable() {
           schema: 'public',
           table: 'orders',
         },
-        () => {
+        (payload) => {
           fetchOrders()
+          
+          // Handle reminder notifications
+          if (payload.eventType === 'UPDATE') {
+            const newOrder = payload.new as any
+            const oldOrder = payload.old as any
+            
+            // Check if reminder was sent
+            if (newOrder.last_reminder_at && newOrder.last_reminder_at !== oldOrder.last_reminder_at) {
+              showReminderNotification(newOrder)
+            }
+          }
         }
       )
       .subscribe()
@@ -106,6 +124,38 @@ export default function OrdersTable() {
       supabase.removeChannel(channel)
     }
   }, [filter, dateFilter])
+
+  const showReminderNotification = (order: any) => {
+    const reminderCount = order.reminder_count || 0
+    const message = `⚠️ Customer reminder #${reminderCount} for Table #${order.table_id.slice(0, 8)}`
+    
+    // Show toast
+    toast.error(message, {
+      duration: 8000,
+      icon: '🔔',
+    })
+
+    // Play sound
+    try {
+      const audio = new Audio('/notification.mp3')
+      audio.volume = 0.7
+      audio.play().catch(() => {})
+    } catch (e) {}
+
+    // Show browser notification
+    if ('Notification' in window && Notification.permission === 'granted') {
+      const options: any = {
+        body: `Order from Table #${order.table_id.slice(0, 8)} - ₹${order.total_amount}\nReminder #${reminderCount} - Please check this order!`,
+        icon: '/icon-192.png',
+        badge: '/icon-192.png',
+        tag: `reminder-${order.id}`,
+        requireInteraction: true,
+        silent: false,
+        vibrate: [300, 100, 300],
+      }
+      new Notification('⚠️ Order Reminder!', options)
+    }
+  }
 
   const updateOrderStatus = async (orderId: string, newStatus: string) => {
     try {
@@ -292,15 +342,16 @@ export default function OrdersTable() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {orders.map((order) => {
-            const isNew = (Date.now() - new Date(order.created_at).getTime()) < 60000 // Less than 1 min
+          {orders.map((order: any) => {
+            const isNew = (Date.now() - new Date(order.created_at).getTime()) < 60000
+            const hasReminders = order.reminder_count > 0
             
             return (
               <Card 
                 key={order.id} 
                 className={`animate-fade-in hover:shadow-xl transition-all ${
                   isNew ? 'ring-2 ring-blue-400 ring-offset-2' : ''
-                }`}
+                } ${hasReminders ? 'ring-2 ring-orange-400 ring-offset-2' : ''}`}
               >
                 {isNew && (
                   <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg animate-bounce">
@@ -311,7 +362,15 @@ export default function OrdersTable() {
                 {/* Order Header */}
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <h3 className="font-bold text-lg">Table #{order.table_id.slice(0, 8)}</h3>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="font-bold text-lg">Table #{order.table_id.slice(0, 8)}</h3>
+                      {hasReminders && (
+                        <div className="flex items-center gap-1 bg-orange-100 text-orange-700 px-2 py-1 rounded-full animate-pulse">
+                          <BellRing className="w-3 h-3" />
+                          <span className="text-xs font-bold">{order.reminder_count}</span>
+                        </div>
+                      )}
+                    </div>
                     <p className="text-xs text-gray-500">Order #{order.id.slice(0, 8)}</p>
                     <p className="text-xs text-gray-400">{formatDate(order.created_at)}</p>
                   </div>
@@ -323,6 +382,16 @@ export default function OrdersTable() {
                     {order.status.toUpperCase()}
                   </span>
                 </div>
+
+                {/* Reminder Warning */}
+                {hasReminders && order.status === 'pending' && (
+                  <div className="mb-3 p-2 bg-orange-50 border border-orange-200 rounded-lg flex items-center gap-2">
+                    <Bell className="w-4 h-4 text-orange-600 flex-shrink-0 animate-bounce" />
+                    <p className="text-xs font-semibold text-orange-700">
+                      Customer sent {order.reminder_count} reminder{order.reminder_count !== 1 ? 's' : ''}! Please process this order.
+                    </p>
+                  </div>
+                )}
 
                 {/* Order Items */}
                 <div className="space-y-2 mb-4 max-h-40 overflow-y-auto">
@@ -349,7 +418,7 @@ export default function OrdersTable() {
                   </span>
                 </div>
 
-                {/* Payment Status - ENHANCED */}
+                {/* Payment Status */}
                 <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-semibold text-gray-600">Payment Status</span>
@@ -373,7 +442,6 @@ export default function OrdersTable() {
                     </span>
                   </div>
                   
-                  {/* Payment Method Display */}
                   {order.payment_id && order.payment_status === 'paid' && (
                     <div className="text-xs text-gray-500 flex items-center gap-1">
                       <span>Method:</span>
@@ -383,7 +451,6 @@ export default function OrdersTable() {
                     </div>
                   )}
                   
-                  {/* Mark as Paid Button */}
                   {order.payment_status === 'pending' && (
                     <button
                       onClick={() => handleMarkPaid(order.id)}
