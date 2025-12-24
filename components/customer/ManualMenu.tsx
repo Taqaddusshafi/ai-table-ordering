@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import toast from 'react-hot-toast'
-import { Plus, Minus, X, ShoppingCart, Loader2, CreditCard, Banknote, Search } from 'lucide-react'
+import { Plus, Minus, X, ShoppingCart, Loader2, CreditCard, Banknote, Search, ChevronUp } from 'lucide-react'
 
 // Declare Razorpay type
 declare global {
@@ -33,6 +33,81 @@ interface ManualMenuProps {
   onSwitchToOrders?: () => void
 }
 
+// Lazy loading image component with skeleton
+function LazyImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
+  const [loaded, setLoaded] = useState(false)
+  const [error, setError] = useState(false)
+  const imgRef = useRef<HTMLImageElement>(null)
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && imgRef.current) {
+            imgRef.current.src = src
+          }
+        })
+      },
+      { rootMargin: '100px' }
+    )
+
+    if (imgRef.current) {
+      observer.observe(imgRef.current)
+    }
+
+    return () => observer.disconnect()
+  }, [src])
+
+  if (error) {
+    return (
+      <div className={`${className} bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center`}>
+        <span className="text-4xl">🍽️</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className={`${className} relative overflow-hidden`}>
+      {/* Skeleton placeholder */}
+      {!loaded && (
+        <div className="absolute inset-0 skeleton" />
+      )}
+      <img
+        ref={imgRef}
+        alt={alt}
+        onLoad={() => setLoaded(true)}
+        onError={() => setError(true)}
+        className={`w-full h-full object-cover transition-opacity duration-300 ${
+          loaded ? 'opacity-100' : 'opacity-0'
+        }`}
+        loading="lazy"
+        decoding="async"
+      />
+    </div>
+  )
+}
+
+// Skeleton card component
+function MenuItemSkeleton() {
+  return (
+    <div className="bg-white rounded-xl sm:rounded-2xl border-2 border-gray-100 overflow-hidden animate-pulse">
+      <div className="h-36 sm:h-44 skeleton" />
+      <div className="p-3 sm:p-4 space-y-3">
+        <div className="flex justify-between items-start">
+          <div className="skeleton skeleton-text w-3/4 h-5" />
+          <div className="skeleton w-16 h-5 rounded-full" />
+        </div>
+        <div className="skeleton skeleton-text w-full h-4" />
+        <div className="skeleton skeleton-text w-2/3 h-4" />
+        <div className="flex justify-between items-center pt-2">
+          <div className="skeleton w-16 h-6" />
+          <div className="skeleton w-20 h-10 rounded-lg" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ManualMenu({
   tableId,
   sessionId,
@@ -48,11 +123,28 @@ export default function ManualMenu({
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
   const [razorpayAvailable, setRazorpayAvailable] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [showScrollTop, setShowScrollTop] = useState(false)
+  const [expandedCart, setExpandedCart] = useState(false)
+  const categoryRef = useRef<HTMLDivElement>(null)
+  const menuContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     fetchMenu()
     loadRazorpayScript()
     checkRazorpayConfig()
+  }, [])
+
+  // Show scroll to top button
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowScrollTop(window.scrollY > 300)
+    }
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  const scrollToTop = useCallback(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }, [])
 
   const checkRazorpayConfig = () => {
@@ -115,7 +207,7 @@ export default function ManualMenu({
       }
       return [...prev, { ...item, quantity: 1 }]
     })
-    toast.success(`Added to cart!`, { icon: '🛒', duration: 1000 })
+    toast.success(`Added to cart!`, { icon: '🛒', duration: 1500 })
   }
 
   const removeFromCart = (itemId: string) => {
@@ -296,48 +388,62 @@ export default function ManualMenu({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <Loader2 className="w-10 h-10 sm:w-12 sm:h-12 animate-spin text-blue-600 mx-auto mb-4" />
-          <p className="text-sm sm:text-base text-gray-600">Loading menu...</p>
+      <div className="pb-32 sm:pb-6">
+        {/* Search skeleton */}
+        <div className="mb-4">
+          <div className="skeleton h-12 rounded-xl" />
+        </div>
+        {/* Category skeleton */}
+        <div className="mb-4 flex gap-2 overflow-hidden">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="skeleton h-10 w-24 rounded-full flex-shrink-0" />
+          ))}
+        </div>
+        {/* Menu items skeleton */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <MenuItemSkeleton key={i} />
+          ))}
         </div>
       </div>
     )
   }
 
   return (
-    <div className="pb-32 sm:pb-6">
-      {/* Search Bar */}
-      <div className="mb-4 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+    <div className="pb-36 sm:pb-6" ref={menuContainerRef}>
+      {/* Search Bar - Mobile Optimized */}
+      <div className="mb-4 sticky top-0 z-40 bg-gradient-to-b from-blue-50 via-blue-50/95 to-blue-50/0 pt-2 pb-4 -mx-4 px-4 sm:-mx-6 sm:px-6">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search menu items..."
-            className="w-full pl-10 pr-10 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-all text-sm sm:text-base bg-white shadow-sm"
+            className="w-full pl-12 pr-12 py-3.5 border-2 border-gray-200 rounded-2xl focus:border-blue-500 focus:outline-none transition-all text-base bg-white shadow-sm touch-feedback"
+            enterKeyHint="search"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 p-1 hover:bg-gray-100 rounded-full transition-colors"
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 p-2 hover:bg-gray-100 rounded-full transition-colors touch-feedback"
+              aria-label="Clear search"
             >
-              <X className="w-4 h-4 text-gray-400" />
+              <X className="w-5 h-5 text-gray-400" />
             </button>
           )}
         </div>
         {searchQuery && (
-          <p className="text-xs text-gray-500 mt-2">
+          <p className="text-xs text-gray-500 mt-2 ml-1">
             Found {filteredItems.length} item{filteredItems.length !== 1 ? 's' : ''}
           </p>
         )}
       </div>
 
-      {/* Sticky Category Filter */}
-      <div className="sticky top-0 sm:top-0 z-30 bg-gradient-to-b from-blue-50 via-blue-50 to-transparent pt-2 pb-4 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 mb-4">
-        <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-2">
-          {categories.map((category) => {
+      {/* Category Filter - Horizontal Scroll */}
+      <div ref={categoryRef} className="mb-5 -mx-4 px-4 sm:-mx-6 sm:px-6">
+        <div className="flex gap-2.5 overflow-x-auto hide-scrollbar scroll-x-mobile pb-1">
+          {categories.map((category, index) => {
             const count = category === 'All' 
               ? menuItems.length 
               : menuItems.filter(item => item.category === category).length
@@ -349,11 +455,12 @@ export default function ManualMenu({
                   setSelectedCategory(category)
                   setSearchQuery('') // Clear search when changing category
                 }}
-                className={`flex-shrink-0 px-4 py-2.5 rounded-full text-xs sm:text-sm font-bold transition-all duration-200 ${
+                className={`flex-shrink-0 px-5 py-3 rounded-full text-sm font-bold transition-all duration-200 touch-feedback no-select ${
                   selectedCategory === category
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg scale-105 ring-2 ring-blue-200'
-                    : 'bg-white text-gray-700 hover:bg-gray-100 border-2 border-gray-200 hover:border-blue-300'
-                }`}
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg scale-[1.02] ring-2 ring-blue-200'
+                    : 'bg-white text-gray-700 hover:bg-gray-100 border-2 border-gray-200 active:bg-gray-200'
+                } ${index === 0 ? 'animate-fade-in' : ''}`}
+                style={{ animationDelay: `${index * 0.03}s` }}
               >
                 {category}
                 <span className={`ml-1.5 text-xs ${
@@ -368,27 +475,28 @@ export default function ManualMenu({
       </div>
 
       {/* Menu Items Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-        {filteredItems.map((item) => {
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {filteredItems.map((item, index) => {
           const quantityInCart = getItemQuantityInCart(item.id)
           
           return (
             <div
               key={item.id}
-              className={`bg-white rounded-xl sm:rounded-2xl border-2 overflow-hidden hover:shadow-xl transition-all duration-300 ${
-                quantityInCart > 0 ? 'border-blue-400 shadow-lg' : 'border-gray-200'
+              className={`bg-white rounded-2xl border-2 overflow-hidden transition-all duration-300 card-interactive animate-fade-in-up ${
+                quantityInCart > 0 ? 'border-blue-400 shadow-lg ring-2 ring-blue-100' : 'border-gray-100'
               }`}
+              style={{ animationDelay: `${index * 0.05}s` }}
             >
-              {/* Image */}
+              {/* Image with lazy loading */}
               {item.image_url && (
-                <div className="relative h-36 sm:h-44 bg-gray-100">
-                  <img
+                <div className="relative h-40 sm:h-48 bg-gray-100">
+                  <LazyImage
                     src={item.image_url}
                     alt={item.name}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full"
                   />
                   {quantityInCart > 0 && (
-                    <div className="absolute top-2 right-2 bg-blue-600 text-white px-3 py-1.5 rounded-full text-sm font-bold shadow-lg animate-bounce">
+                    <div className="absolute top-3 right-3 bg-blue-600 text-white px-3 py-1.5 rounded-full text-sm font-bold shadow-lg animate-bounce-in">
                       {quantityInCart} in cart
                     </div>
                   )}
@@ -396,47 +504,49 @@ export default function ManualMenu({
               )}
 
               {/* Content */}
-              <div className="p-3 sm:p-4">
-                <div className="flex items-start justify-between gap-2 mb-1">
-                  <h3 className="font-bold text-base sm:text-lg text-gray-900 line-clamp-1 flex-1">
+              <div className="p-4">
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <h3 className="font-bold text-lg text-gray-900 line-clamp-1 flex-1">
                     {item.name}
                   </h3>
-                  <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full whitespace-nowrap">
+                  <span className="text-xs bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full whitespace-nowrap font-medium">
                     {item.category}
                   </span>
                 </div>
-                <p className="text-xs sm:text-sm text-gray-600 mb-3 line-clamp-2 h-8 sm:h-10">
+                <p className="text-sm text-gray-600 mb-4 line-clamp-2 min-h-[40px]">
                   {item.description || 'Delicious item'}
                 </p>
 
                 {/* Price & Add/Update Controls */}
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-lg sm:text-xl font-bold text-blue-600">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xl font-bold text-blue-600">
                     ₹{item.price}
                   </span>
 
                   {quantityInCart === 0 ? (
                     <button
                       onClick={() => addToCart(item)}
-                      className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 py-2.5 rounded-lg text-sm font-bold hover:shadow-lg transition-all flex items-center gap-2 active:scale-95"
+                      className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-5 py-3 rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-2 touch-feedback-strong"
                     >
                       <Plus className="w-4 h-4" />
                       Add
                     </button>
                   ) : (
-                    <div className="flex items-center gap-2 bg-blue-50 rounded-lg p-1">
+                    <div className="flex items-center gap-1 bg-blue-50 rounded-xl p-1.5">
                       <button
                         onClick={() => updateQuantity(item.id, quantityInCart - 1)}
-                        className="w-8 h-8 bg-white border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center font-bold active:scale-90"
+                        className="w-10 h-10 bg-white border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center font-bold touch-feedback"
+                        aria-label={quantityInCart === 1 ? 'Remove from cart' : 'Decrease quantity'}
                       >
                         {quantityInCart === 1 ? <X className="w-4 h-4" /> : <Minus className="w-4 h-4" />}
                       </button>
-                      <span className="w-8 text-center font-bold text-blue-600">
+                      <span className="w-10 text-center font-bold text-blue-600 text-lg">
                         {quantityInCart}
                       </span>
                       <button
                         onClick={() => updateQuantity(item.id, quantityInCart + 1)}
-                        className="w-8 h-8 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all flex items-center justify-center font-bold active:scale-90"
+                        className="w-10 h-10 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all flex items-center justify-center font-bold touch-feedback"
+                        aria-label="Increase quantity"
                       >
                         <Plus className="w-4 h-4" />
                       </button>
@@ -451,18 +561,20 @@ export default function ManualMenu({
 
       {/* Empty State */}
       {filteredItems.length === 0 && (
-        <div className="text-center py-12 sm:py-16">
-          <Search className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-          <p className="text-gray-600 text-base sm:text-lg font-semibold mb-1">
+        <div className="text-center py-16 animate-fade-in">
+          <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Search className="w-10 h-10 text-gray-300" />
+          </div>
+          <p className="text-gray-600 text-lg font-semibold mb-1">
             {searchQuery ? 'No items found' : 'No items in this category'}
           </p>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-500 mb-4">
             {searchQuery ? 'Try searching with different keywords' : 'Browse other categories'}
           </p>
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="mt-4 text-blue-600 font-semibold text-sm hover:underline"
+              className="text-blue-600 font-semibold text-sm hover:underline touch-feedback"
             >
               Clear search
             </button>
@@ -470,27 +582,77 @@ export default function ManualMenu({
         </div>
       )}
 
-      {/* Floating Cart (Mobile) */}
+      {/* Scroll to Top Button */}
+      {showScrollTop && (
+        <button
+          onClick={scrollToTop}
+          className="fixed bottom-36 right-4 sm:bottom-24 sm:right-6 z-30 w-12 h-12 bg-white border-2 border-gray-200 rounded-full shadow-lg flex items-center justify-center touch-feedback animate-fade-in"
+          aria-label="Scroll to top"
+        >
+          <ChevronUp className="w-6 h-6 text-gray-600" />
+        </button>
+      )}
+
+      {/* Floating Cart (Mobile) - Enhanced with iOS Safe Area */}
       {cart.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 sm:hidden bg-white border-t-2 border-gray-200 shadow-2xl z-50 animate-slide-up backdrop-blur-sm bg-opacity-95">
-          <div className="px-4 py-3">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
+        <div className="fixed bottom-0 left-0 right-0 sm:hidden bg-white border-t-2 border-gray-200 shadow-2xl z-50 animate-slide-up fixed-bottom-safe">
+          <div className="px-4 pt-3 pb-2">
+            {/* Expandable cart preview */}
+            <button
+              onClick={() => setExpandedCart(!expandedCart)}
+              className="w-full flex items-center justify-between mb-3 touch-feedback"
+            >
+              <div className="flex items-center gap-3">
                 <div className="relative">
-                  <ShoppingCart className="w-5 h-5 text-blue-600" />
-                  <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">
+                  <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                    <ShoppingCart className="w-6 h-6 text-blue-600" />
+                  </div>
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">
                     {totalItems}
                   </span>
                 </div>
-                <span className="font-bold text-gray-900">
-                  {totalItems} {totalItems === 1 ? 'item' : 'items'}
-                </span>
+                <div className="text-left">
+                  <p className="font-bold text-gray-900">
+                    {totalItems} {totalItems === 1 ? 'item' : 'items'}
+                  </p>
+                  <p className="text-xs text-gray-500">Tap to {expandedCart ? 'hide' : 'view'} cart</p>
+                </div>
               </div>
-              <span className="font-bold text-xl text-blue-600">₹{totalAmount}</span>
-            </div>
+              <span className="font-bold text-2xl text-blue-600">₹{totalAmount}</span>
+            </button>
+
+            {/* Expanded cart items */}
+            {expandedCart && (
+              <div className="mb-3 max-h-48 overflow-y-auto scroll-momentum border-t border-gray-100 pt-3">
+                {cart.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm text-gray-900 truncate">{item.name}</p>
+                      <p className="text-xs text-gray-500">₹{item.price} × {item.quantity}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                        className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center touch-feedback"
+                      >
+                        <Minus className="w-4 h-4 text-gray-600" />
+                      </button>
+                      <span className="w-6 text-center font-bold text-sm">{item.quantity}</span>
+                      <button
+                        onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                        className="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center touch-feedback"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <button
               onClick={handleOpenCheckout}
-              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3.5 rounded-xl font-bold text-base hover:shadow-xl transition-all active:scale-95"
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-xl font-bold text-base shadow-lg hover:shadow-xl transition-all touch-feedback-strong"
             >
               Continue to Payment 🎉
             </button>
@@ -500,35 +662,37 @@ export default function ManualMenu({
 
       {/* Desktop Cart */}
       {cart.length > 0 && (
-        <div className="hidden sm:block mt-6 bg-white rounded-xl sm:rounded-2xl border-2 border-blue-200 shadow-lg p-4 sm:p-6">
-          <div className="flex items-center gap-2 mb-4">
+        <div className="hidden sm:block mt-6 bg-white rounded-2xl border-2 border-blue-200 shadow-lg p-6 animate-fade-in">
+          <div className="flex items-center gap-3 mb-4">
             <div className="relative">
-              <ShoppingCart className="w-6 h-6 text-blue-600" />
-              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">
+              <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                <ShoppingCart className="w-6 h-6 text-blue-600" />
+              </div>
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">
                 {totalItems}
               </span>
             </div>
-            <h2 className="text-lg sm:text-xl font-bold text-gray-900">Your Cart</h2>
+            <h2 className="text-xl font-bold text-gray-900">Your Cart</h2>
           </div>
 
-          <div className="space-y-3 mb-4 max-h-64 sm:max-h-80 overflow-y-auto">
+          <div className="space-y-3 mb-4 max-h-80 overflow-y-auto scroll-momentum">
             {cart.map((item) => (
               <div
                 key={item.id}
-                className="flex items-center justify-between gap-3 p-3 bg-blue-50 rounded-lg border border-blue-100"
+                className="flex items-center justify-between gap-3 p-3 bg-blue-50 rounded-xl border border-blue-100"
               >
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm sm:text-base text-gray-900 truncate">
+                  <p className="font-semibold text-base text-gray-900 truncate">
                     {item.name}
                   </p>
-                  <p className="text-xs sm:text-sm text-gray-600">
+                  <p className="text-sm text-gray-600">
                     ₹{item.price} × {item.quantity}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                    className="w-8 h-8 bg-white border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center"
+                    className="w-9 h-9 bg-white border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center touch-feedback"
                   >
                     <Minus className="w-4 h-4" />
                   </button>
@@ -537,13 +701,13 @@ export default function ManualMenu({
                   </span>
                   <button
                     onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                    className="w-8 h-8 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all flex items-center justify-center"
+                    className="w-9 h-9 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all flex items-center justify-center touch-feedback"
                   >
                     <Plus className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => removeFromCart(item.id)}
-                    className="ml-1 text-red-500 hover:text-red-700 transition-colors"
+                    className="ml-1 text-red-500 hover:text-red-700 transition-colors p-1 touch-feedback"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -554,14 +718,14 @@ export default function ManualMenu({
 
           <div className="border-t-2 border-blue-100 pt-4">
             <div className="flex justify-between items-center mb-4">
-              <span className="font-bold text-lg sm:text-xl text-gray-900">Total:</span>
-              <span className="font-bold text-2xl sm:text-3xl text-blue-600">
+              <span className="font-bold text-xl text-gray-900">Total:</span>
+              <span className="font-bold text-3xl text-blue-600">
                 ₹{totalAmount}
               </span>
             </div>
             <button
               onClick={handleOpenCheckout}
-              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-xl font-bold text-lg hover:shadow-xl transition-all active:scale-95"
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition-all touch-feedback-strong"
             >
               Continue to Payment 🎉
             </button>
@@ -569,13 +733,16 @@ export default function ManualMenu({
         </div>
       )}
 
-      {/* Checkout Modal */}
+      {/* Checkout Modal - Mobile Optimized */}
       {showCheckoutModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 animate-fade-in">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center animate-fade-in">
+          <div className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-3xl p-6 animate-slide-up sm:animate-scale-in fixed-bottom-safe sm:relative">
+            {/* Drag handle for mobile */}
+            <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-4 sm:hidden" />
+            
             <h2 className="text-2xl font-bold text-gray-900 mb-4">Choose Payment Method</h2>
             
-            <div className="bg-gray-50 rounded-lg p-4 mb-6">
+            <div className="bg-gray-50 rounded-xl p-4 mb-6">
               <div className="flex justify-between items-center mb-2">
                 <span className="text-gray-600">Items</span>
                 <span className="font-semibold">{totalItems}</span>
@@ -590,7 +757,7 @@ export default function ManualMenu({
               <button
                 onClick={() => setPaymentMethod('cash')}
                 disabled={isProcessingPayment}
-                className={`w-full p-4 rounded-xl border-2 transition-all flex items-center gap-3 ${
+                className={`w-full p-4 rounded-xl border-2 transition-all flex items-center gap-4 touch-feedback ${
                   paymentMethod === 'cash'
                     ? 'border-blue-600 bg-blue-50'
                     : 'border-gray-200 hover:border-gray-300'
@@ -613,7 +780,7 @@ export default function ManualMenu({
               <button
                 onClick={() => setPaymentMethod('online')}
                 disabled={isProcessingPayment || !razorpayAvailable}
-                className={`w-full p-4 rounded-xl border-2 transition-all flex items-center gap-3 ${
+                className={`w-full p-4 rounded-xl border-2 transition-all flex items-center gap-4 touch-feedback ${
                   paymentMethod === 'online'
                     ? 'border-blue-600 bg-blue-50'
                     : 'border-gray-200 hover:border-gray-300'
@@ -640,18 +807,18 @@ export default function ManualMenu({
               <button
                 onClick={() => setShowCheckoutModal(false)}
                 disabled={isProcessingPayment}
-                className="flex-1 px-6 py-3 border-2 border-gray-300 rounded-xl font-bold text-gray-700 hover:bg-gray-50 transition-all disabled:opacity-50"
+                className="flex-1 px-6 py-4 border-2 border-gray-300 rounded-xl font-bold text-gray-700 hover:bg-gray-50 transition-all disabled:opacity-50 touch-feedback"
               >
                 Cancel
               </button>
               <button
                 onClick={handleConfirmOrder}
                 disabled={isProcessingPayment}
-                className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-bold hover:shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                className="flex-1 px-6 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-bold shadow-lg hover:shadow-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2 touch-feedback-strong"
               >
                 {isProcessingPayment ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Loader2 className="w-5 h-5 animate-spin" />
                     Processing...
                   </>
                 ) : (
@@ -662,40 +829,6 @@ export default function ManualMenu({
           </div>
         </div>
       )}
-
-      <style jsx>{`
-        .hide-scrollbar::-webkit-scrollbar {
-          display: none;
-        }
-        .hide-scrollbar {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
-        }
-        @keyframes slide-up {
-          from {
-            transform: translateY(100%);
-          }
-          to {
-            transform: translateY(0);
-          }
-        }
-        .animate-slide-up {
-          animation: slide-up 0.3s ease-out;
-        }
-        @keyframes fade-in {
-          from {
-            opacity: 0;
-            transform: scale(0.95);
-          }
-          to {
-            opacity: 1;
-            transform: scale(1);
-          }
-        }
-        .animate-fade-in {
-          animation: fade-in 0.2s ease-out;
-        }
-      `}</style>
     </div>
   )
 }

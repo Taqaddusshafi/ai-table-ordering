@@ -1,14 +1,35 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense, lazy, useCallback } from 'react'
 import { useParams } from 'next/navigation'
-import ChatInterface from '@/components/customer/ChatInterface'
-import ManualMenu from '@/components/customer/ManualMenu'
-import OrderStatus from '@/components/customer/OrderStatus'
 import { generateSessionId } from '@/lib/utils/helpers'
 import toast from 'react-hot-toast'
-import { Sparkles } from 'lucide-react'
+import { Sparkles, Menu, MessageSquare, Receipt, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+
+// Lazy load components for better initial load performance
+const ChatInterface = lazy(() => import('@/components/customer/ChatInterface'))
+const ManualMenu = lazy(() => import('@/components/customer/ManualMenu'))
+const OrderStatus = lazy(() => import('@/components/customer/OrderStatus'))
+
+// Loading skeleton for lazy loaded components
+function TabContentSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse">
+      <div className="skeleton h-12 rounded-xl" />
+      <div className="flex gap-2 overflow-hidden">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="skeleton h-10 w-24 rounded-full flex-shrink-0" />
+        ))}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="skeleton h-64 rounded-2xl" />
+        ))}
+      </div>
+    </div>
+  )
+}
 
 export default function TablePage() {
   const params = useParams()
@@ -22,6 +43,7 @@ export default function TablePage() {
 
   const [sessionId, setSessionId] = useState('')
   const [activeTab, setActiveTab] = useState<'manual' | 'ai' | 'orders'>('manual')
+  const [isTabChanging, setIsTabChanging] = useState(false)
 
   useEffect(() => {
     if (!tableId) return
@@ -35,6 +57,17 @@ export default function TablePage() {
       setSessionId(newSession)
     }
   }, [tableId])
+
+  // Smooth tab change with animation
+  const handleTabChange = useCallback((tab: 'manual' | 'ai' | 'orders') => {
+    if (tab === activeTab) return
+    setIsTabChanging(true)
+    // Short delay for exit animation
+    setTimeout(() => {
+      setActiveTab(tab)
+      setIsTabChanging(false)
+    }, 150)
+  }, [activeTab])
 
   // ✅ Notification System
   useEffect(() => {
@@ -99,7 +132,7 @@ export default function TablePage() {
 
               // Auto-switch to orders tab if ready
               if (order.status === 'ready') {
-                setTimeout(() => setActiveTab('orders'), 2000)
+                setTimeout(() => handleTabChange('orders'), 2000)
               }
             }
           }
@@ -110,7 +143,7 @@ export default function TablePage() {
     return () => {
       supabase.removeChannel(ordersChannel)
     }
-  }, [sessionId, tableId])
+  }, [sessionId, tableId, handleTabChange])
 
   const handleOrderConfirmed = async (items: any[], totalAmount: number) => {
     try {
@@ -123,7 +156,7 @@ export default function TablePage() {
       const result = await response.json()
       if (result.success) {
         toast.success('🎉 Order placed successfully!')
-        setActiveTab('orders')
+        handleTabChange('orders')
       } else {
         throw new Error(result.error || 'Failed to create order')
       }
@@ -134,8 +167,8 @@ export default function TablePage() {
 
   if (!tableId) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50 px-4">
-        <div className="text-center">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50 px-4 safe-area-all">
+        <div className="text-center animate-fade-in">
           <div className="text-6xl mb-4">⚠️</div>
           <div className="text-xl font-bold text-red-600 mb-2">No Table ID</div>
           <p className="text-gray-600 text-sm sm:text-base">
@@ -148,9 +181,9 @@ export default function TablePage() {
 
   if (!sessionId) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 sm:h-16 sm:w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50 safe-area-all">
+        <div className="text-center animate-fade-in">
+          <Loader2 className="h-12 w-12 animate-spin text-blue-600 mx-auto mb-4" />
           <p className="text-gray-600 text-sm sm:text-base">
             Loading table {tableId}...
           </p>
@@ -159,102 +192,99 @@ export default function TablePage() {
     )
   }
 
+  const tabs = [
+    { id: 'manual' as const, label: 'Menu', icon: Menu, emoji: '📋' },
+    { id: 'ai' as const, label: 'AI Chat', icon: MessageSquare, emoji: '🤖' },
+    { id: 'orders' as const, label: 'Orders', icon: Receipt, emoji: '🧾' },
+  ]
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
-      {/* Header */}
-      <div className="bg-white shadow-md border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
-          <div className="text-center">
-            <div className="inline-flex items-center gap-2 mb-2">
-              <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
-              <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600">
-                Table #{tableId}
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 safe-area-x">
+      {/* Header - Compact on Mobile */}
+      <div className="bg-white/95 backdrop-blur-md shadow-sm border-b border-gray-200 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-6 h-6 text-blue-600" />
+              <h1 className="text-lg sm:text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600">
+                Table #{tableId.length > 12 ? `${tableId.slice(0, 12)}...` : tableId}
               </h1>
             </div>
-            <p className="text-sm sm:text-base text-gray-600">
-              Browse menu, chat with AI, or view your orders
-            </p>
-            <p className="text-xs text-gray-400 mt-1 font-mono">
-              Session: {sessionId.slice(0, 12)}...
-            </p>
+            <div className="hidden sm:block">
+              <p className="text-xs text-gray-400 font-mono">
+                Session: {sessionId.slice(0, 8)}...
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="border-t border-gray-200">
-          <div className="max-w-7xl mx-auto px-2 sm:px-4">
-            <div className="flex items-center justify-around">
-              <button
-                onClick={() => setActiveTab('manual')}
-                className={`flex-1 py-3 sm:py-4 px-2 text-xs sm:text-sm font-semibold transition-all duration-200 relative ${
-                  activeTab === 'manual' ? 'text-blue-600' : 'text-gray-600 hover:text-gray-800'
-                }`}
-              >
-                <div className="flex flex-col items-center gap-1">
-                  <span className="text-xl sm:text-2xl">📋</span>
-                  <span>Menu</span>
-                </div>
-                {activeTab === 'manual' && (
-                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-600 to-indigo-600"></div>
-                )}
-              </button>
-
-              <button
-                onClick={() => setActiveTab('ai')}
-                className={`flex-1 py-3 sm:py-4 px-2 text-xs sm:text-sm font-semibold transition-all duration-200 relative ${
-                  activeTab === 'ai' ? 'text-blue-600' : 'text-gray-600 hover:text-gray-800'
-                }`}
-              >
-                <div className="flex flex-col items-center gap-1">
-                  <span className="text-xl sm:text-2xl">🤖</span>
-                  <span>AI Chat</span>
-                </div>
-                {activeTab === 'ai' && (
-                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-600 to-indigo-600"></div>
-                )}
-              </button>
-
-              <button
-                onClick={() => setActiveTab('orders')}
-                className={`flex-1 py-3 sm:py-4 px-2 text-xs sm:text-sm font-semibold transition-all duration-200 relative ${
-                  activeTab === 'orders' ? 'text-blue-600' : 'text-gray-600 hover:text-gray-800'
-                }`}
-              >
-                <div className="flex flex-col items-center gap-1">
-                  <span className="text-xl sm:text-2xl">🧾</span>
-                  <span>Orders</span>
-                </div>
-                {activeTab === 'orders' && (
-                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-600 to-indigo-600"></div>
-                )}
-              </button>
+        {/* Tab Navigation - Mobile First Design */}
+        <div className="border-t border-gray-100">
+          <div className="max-w-7xl mx-auto">
+            <div className="flex items-center">
+              {tabs.map((tab) => {
+                const isActive = activeTab === tab.id
+                const TabIcon = tab.icon
+                
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => handleTabChange(tab.id)}
+                    className={`flex-1 py-3 sm:py-4 relative transition-all duration-200 touch-feedback no-select ${
+                      isActive ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                    aria-selected={isActive}
+                    role="tab"
+                  >
+                    <div className="flex flex-col items-center gap-1">
+                      {/* Mobile: Show emoji, Desktop: Show icon */}
+                      <span className="text-xl sm:hidden">{tab.emoji}</span>
+                      <TabIcon className="w-5 h-5 hidden sm:block" />
+                      <span className={`text-xs sm:text-sm font-semibold ${
+                        isActive ? 'text-blue-600' : 'text-gray-600'
+                      }`}>
+                        {tab.label}
+                      </span>
+                    </div>
+                    
+                    {/* Active indicator */}
+                    {isActive && (
+                      <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full animate-scale-in" />
+                    )}
+                  </button>
+                )
+              })}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Main Content */}
+      {/* Main Content with Animation */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
-        {activeTab === 'manual' && (
-          <ManualMenu
-            tableId={tableId}
-            sessionId={sessionId}
-            onOrderConfirmed={handleOrderConfirmed}
-            onSwitchToOrders={() => setActiveTab('orders')} // ✅ ADDED
-          />
-        )}
+        <div className={`transition-opacity duration-150 ${isTabChanging ? 'opacity-0' : 'opacity-100'}`}>
+          <Suspense fallback={<TabContentSkeleton />}>
+            {activeTab === 'manual' && (
+              <ManualMenu
+                tableId={tableId}
+                sessionId={sessionId}
+                onOrderConfirmed={handleOrderConfirmed}
+                onSwitchToOrders={() => handleTabChange('orders')}
+              />
+            )}
 
-        {activeTab === 'ai' && (
-          <ChatInterface
-            tableId={tableId}
-            sessionId={sessionId}
-            onOrderConfirmed={handleOrderConfirmed}
-          />
-        )}
+            {activeTab === 'ai' && (
+              <ChatInterface
+                tableId={tableId}
+                sessionId={sessionId}
+                onOrderConfirmed={handleOrderConfirmed}
+              />
+            )}
 
-        {activeTab === 'orders' && (
-          <OrderStatus tableId={tableId} sessionId={sessionId} />
-        )}
+            {activeTab === 'orders' && (
+              <OrderStatus tableId={tableId} sessionId={sessionId} />
+            )}
+          </Suspense>
+        </div>
       </div>
     </div>
   )

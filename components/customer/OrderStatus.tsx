@@ -1,19 +1,49 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate } from '@/lib/utils/helpers'
 import toast from 'react-hot-toast'
-import { Clock, CheckCircle, Loader2, Package, CreditCard, Receipt, XCircle, AlertCircle, Edit, Plus, Minus, X, Save, ShoppingCart, Search, Bell } from 'lucide-react'
+import { Clock, CheckCircle, Loader2, Package, CreditCard, Receipt, XCircle, AlertCircle, Edit, Plus, Minus, X, Save, ShoppingCart, Search, Bell, RefreshCw } from 'lucide-react'
 
 interface OrderStatusProps {
   tableId: string
   sessionId: string
 }
 
+// Skeleton component for order cards
+function OrderSkeleton() {
+  return (
+    <div className="bg-white rounded-2xl border-2 border-gray-100 overflow-hidden animate-pulse">
+      <div className="bg-gray-50 px-4 py-3 border-b border-gray-100">
+        <div className="flex items-center justify-between">
+          <div className="skeleton w-24 h-5 rounded-full" />
+          <div className="skeleton w-32 h-4" />
+        </div>
+      </div>
+      <div className="p-4 space-y-4">
+        <div className="space-y-2">
+          {[1, 2].map((i) => (
+            <div key={i} className="skeleton h-12 rounded-lg" />
+          ))}
+        </div>
+        <div className="flex justify-between pt-3 border-t border-gray-100">
+          <div className="skeleton w-16 h-6" />
+          <div className="skeleton w-20 h-6" />
+        </div>
+        <div className="flex gap-2">
+          <div className="skeleton flex-1 h-10 rounded-lg" />
+          <div className="skeleton flex-1 h-10 rounded-lg" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
   const [orders, setOrders] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null)
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null)
   const [editedItems, setEditedItems] = useState<any[]>([])
@@ -33,30 +63,32 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
     return () => clearInterval(interval)
   }, [])
 
+  const fetchOrders = useCallback(async () => {
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('orders')
+      .select(`
+        *,
+        order_items (
+          *,
+          menu_item:menu_items(*)
+        )
+      `)
+      .eq('table_id', tableId)
+      .eq('session_id', sessionId)
+      .order('created_at', { ascending: false })
+
+    if (!error && data) setOrders(data)
+    setIsLoading(false)
+    setIsRefreshing(false)
+  }, [tableId, sessionId])
+
   useEffect(() => {
     if (!tableId || !sessionId) return
-    const supabase = createClient()
-
-    const fetchOrders = async () => {
-      const { data, error } = await supabase
-        .from('orders')
-        .select(`
-          *,
-          order_items (
-            *,
-            menu_item:menu_items(*)
-          )
-        `)
-        .eq('table_id', tableId)
-        .eq('session_id', sessionId)
-        .order('created_at', { ascending: false })
-
-      if (!error && data) setOrders(data)
-      setIsLoading(false)
-    }
 
     fetchOrders()
 
+    const supabase = createClient()
     const channel = supabase
       .channel(`orders_session_${sessionId}_${tableId}`)
       .on(
@@ -74,7 +106,7 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [tableId, sessionId])
+  }, [tableId, sessionId, fetchOrders])
 
   // Fetch menu items when edit mode is activated
   useEffect(() => {
@@ -94,6 +126,12 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
     if (!error && data) {
       setMenuItems(data)
     }
+  }
+
+  const handleRefresh = () => {
+    setIsRefreshing(true)
+    fetchOrders()
+    toast.success('Refreshed!', { duration: 1500 })
   }
 
   const canModifyOrder = (order: any) => {
@@ -317,24 +355,23 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 p-8 sm:p-12">
-        <div className="flex flex-col items-center justify-center gap-4">
-          <Loader2 className="w-10 h-10 sm:w-12 sm:h-12 animate-spin text-blue-600" />
-          <p className="text-sm sm:text-base text-gray-600">Loading your orders...</p>
-        </div>
+      <div className="space-y-4">
+        {[1, 2].map((i) => (
+          <OrderSkeleton key={i} />
+        ))}
       </div>
     )
   }
 
   if (!orders.length) {
     return (
-      <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 p-8 sm:p-12">
+      <div className="bg-white rounded-2xl border-2 border-gray-100 p-8 sm:p-12 animate-fade-in">
         <div className="text-center">
-          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Receipt className="w-8 h-8 sm:w-10 sm:h-10 text-gray-400" />
+          <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Receipt className="w-10 h-10 text-gray-400" />
           </div>
-          <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-2">No Orders Yet</h3>
-          <p className="text-sm sm:text-base text-gray-500">
+          <h3 className="text-xl font-bold text-gray-900 mb-2">No Orders Yet</h3>
+          <p className="text-base text-gray-500">
             Start browsing our menu to place your first order!
           </p>
         </div>
@@ -344,7 +381,19 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
 
   return (
     <div className="space-y-4">
-      {orders.map((order) => {
+      {/* Refresh Button */}
+      <div className="flex justify-end mb-2">
+        <button
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+          className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors touch-feedback"
+        >
+          <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+          Refresh
+        </button>
+      </div>
+
+      {orders.map((order, orderIndex) => {
         const statusConfig = getStatusConfig(order.status)
         const StatusIcon = statusConfig.icon
         const canModify = canModifyOrder(order)
@@ -359,10 +408,11 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
         return (
           <div
             key={order.id}
-            className="bg-white rounded-xl sm:rounded-2xl border-2 border-gray-200 overflow-hidden hover:shadow-lg transition-all"
+            className="bg-white rounded-2xl border-2 border-gray-100 overflow-hidden shadow-sm hover:shadow-md transition-all animate-fade-in-up"
+            style={{ animationDelay: `${orderIndex * 0.1}s` }}
           >
             {/* Order Header */}
-            <div className={`${statusConfig.bg} px-4 py-3 border-b-2 ${statusConfig.bg.replace('bg-', 'border-')}`}>
+            <div className={`${statusConfig.bg} px-4 py-3 border-b-2`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <StatusIcon className={`w-5 h-5 ${statusConfig.color}`} />
@@ -370,7 +420,7 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
                     {statusConfig.text}
                   </span>
                   {isEditing && (
-                    <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full">
+                    <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full animate-pulse">
                       Editing
                     </span>
                   )}
@@ -385,13 +435,13 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
             <div className="p-4">
               {/* Modify Warning - Real-time countdown */}
               {canModify && !isEditing && (
-                <div className="mb-3 bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2 animate-pulse">
+                <div className="mb-4 bg-blue-50 border-2 border-blue-200 rounded-xl p-3 flex items-start gap-3">
                   <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
                     <p className="text-sm font-semibold text-blue-800">
-                      Time remaining: <span className="text-lg font-mono">{timeRemaining}</span>
+                      Time remaining: <span className="text-lg font-mono bg-blue-100 px-2 py-0.5 rounded">{timeRemaining}</span>
                     </p>
-                    <p className="text-xs text-blue-700">
+                    <p className="text-xs text-blue-700 mt-1">
                       You can edit or cancel this order within 2 minutes
                     </p>
                   </div>
@@ -399,17 +449,17 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
               )}
 
               {/* Order Items */}
-              <div className="mb-3">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs sm:text-sm font-semibold text-gray-700">
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-semibold text-gray-700">
                     Items:
                   </p>
                   {isEditing && (
                     <button
                       onClick={() => setShowAddItemModal(true)}
-                      className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1 hover:bg-blue-700 transition-all"
+                      className="text-xs bg-blue-600 text-white px-3 py-2 rounded-lg font-semibold flex items-center gap-1.5 hover:bg-blue-700 transition-all touch-feedback"
                     >
-                      <Plus className="w-3 h-3" />
+                      <Plus className="w-4 h-4" />
                       Add Items
                     </button>
                   )}
@@ -419,7 +469,7 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
                     editedItems.map((item: any) => (
                       <div
                         key={item.id}
-                        className="flex items-center justify-between gap-2 bg-blue-50 p-3 rounded-lg border border-blue-200"
+                        className="flex items-center justify-between gap-2 bg-blue-50 p-3 rounded-xl border border-blue-200"
                       >
                         <div className="flex-1 min-w-0">
                           <span className="font-medium text-gray-900 text-sm">
@@ -432,7 +482,7 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => updateEditQuantity(item.id, item.quantity - 1)}
-                            className="w-8 h-8 bg-white border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center"
+                            className="w-9 h-9 bg-white border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center touch-feedback"
                           >
                             {item.quantity === 1 ? <X className="w-4 h-4" /> : <Minus className="w-4 h-4" />}
                           </button>
@@ -441,12 +491,12 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
                           </span>
                           <button
                             onClick={() => updateEditQuantity(item.id, item.quantity + 1)}
-                            className="w-8 h-8 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all flex items-center justify-center"
+                            className="w-9 h-9 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all flex items-center justify-center touch-feedback"
                           >
                             <Plus className="w-4 h-4" />
                           </button>
                         </div>
-                        <span className="font-semibold text-gray-900 ml-2">
+                        <span className="font-semibold text-gray-900 ml-2 text-sm">
                           ₹{item.price * item.quantity}
                         </span>
                       </div>
@@ -455,7 +505,7 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
                     order.order_items?.map((item: any) => (
                       <div
                         key={item.id}
-                        className="flex items-center justify-between text-sm bg-gray-50 p-2 rounded-lg"
+                        className="flex items-center justify-between text-sm bg-gray-50 p-3 rounded-xl"
                       >
                         <div className="flex-1">
                           <span className="font-medium text-gray-900">
@@ -475,18 +525,18 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
               </div>
 
               {/* Total */}
-              <div className="flex items-center justify-between pt-3 border-t border-gray-200 mb-3">
-                <span className="text-base sm:text-lg font-bold text-gray-900">
+              <div className="flex items-center justify-between pt-4 border-t-2 border-gray-100 mb-4">
+                <span className="text-lg font-bold text-gray-900">
                   Total:
                 </span>
-                <span className="text-lg sm:text-xl font-bold text-blue-600">
+                <span className="text-2xl font-bold text-blue-600">
                   ₹{displayTotal}
                 </span>
               </div>
 
               {/* Reminder Button for Pending Orders */}
               {order.status === 'pending' && !isEditing && (
-                <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <div className="mb-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <Bell className="w-4 h-4 text-gray-600" />
@@ -505,7 +555,7 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
                     <button
                       onClick={() => handleSendReminder(order.id)}
                       disabled={sendingReminderId === order.id}
-                      className="w-full bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 rounded-lg font-semibold text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
+                      className="w-full bg-orange-500 hover:bg-orange-600 text-white px-4 py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg touch-feedback"
                     >
                       {sendingReminderId === order.id ? (
                         <>
@@ -523,7 +573,7 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
                     <div className="text-center py-2">
                       <p className="text-xs text-gray-500">
                         Next reminder available in{' '}
-                        <span className="font-mono font-semibold text-gray-700">
+                        <span className="font-mono font-semibold text-gray-700 bg-gray-200 px-1.5 py-0.5 rounded">
                           {getTimeUntilNextReminder(order)}
                         </span>
                       </p>
@@ -537,13 +587,13 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
               )}
 
               {/* Actions */}
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <div className="flex flex-col gap-2">
                 {isEditing ? (
-                  <>
+                  <div className="flex gap-2">
                     <button
                       onClick={() => handleSaveEdit(order.id)}
                       disabled={savingEdit || editedItems.length === 0}
-                      className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 py-2.5 rounded-lg font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
+                      className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed touch-feedback-strong"
                     >
                       {savingEdit ? (
                         <>
@@ -560,33 +610,33 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
                     <button
                       onClick={handleCancelEdit}
                       disabled={savingEdit}
-                      className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2.5 rounded-lg font-semibold transition-all disabled:opacity-50 active:scale-95"
+                      className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-3 rounded-xl font-semibold transition-all disabled:opacity-50 touch-feedback"
                     >
                       Cancel
                     </button>
-                  </>
+                  </div>
                 ) : (
                   <>
-                    <div className="flex items-center gap-2 flex-1">
+                    <div className="flex items-center gap-2">
                       <CreditCard className="w-4 h-4 text-gray-400" />
                       {order.payment_status === 'paid' ? (
-                        <span className="text-xs sm:text-sm font-semibold text-green-600 flex items-center gap-1">
+                        <span className="text-sm font-semibold text-green-600 flex items-center gap-1">
                           <CheckCircle className="w-4 h-4" />
                           Paid
                         </span>
                       ) : (
-                        <span className="text-xs sm:text-sm font-semibold text-yellow-600 flex items-center gap-1">
+                        <span className="text-sm font-semibold text-yellow-600 flex items-center gap-1">
                           <Clock className="w-4 h-4" />
-                          Pending
+                          Pending Payment
                         </span>
                       )}
                     </div>
 
                     {canModify && (
-                      <>
+                      <div className="flex gap-2 mt-2">
                         <button
                           onClick={() => handleEditOrder(order)}
-                          className="flex-1 sm:flex-initial bg-blue-500 hover:bg-blue-600 text-white px-4 py-2.5 rounded-lg font-semibold text-sm flex items-center justify-center gap-2 transition-all active:scale-95"
+                          className="flex-1 bg-blue-500 hover:bg-blue-600 text-white px-4 py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all touch-feedback"
                         >
                           <Edit className="w-4 h-4" />
                           Edit Order
@@ -594,7 +644,7 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
                         <button
                           onClick={() => handleCancelOrder(order.id)}
                           disabled={cancellingOrderId === order.id}
-                          className="flex-1 sm:flex-initial bg-red-500 hover:bg-red-600 text-white px-4 py-2.5 rounded-lg font-semibold text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
+                          className="flex-1 bg-red-500 hover:bg-red-600 text-white px-4 py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed touch-feedback"
                         >
                           {cancellingOrderId === order.id ? (
                             <>
@@ -608,7 +658,7 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
                             </>
                           )}
                         </button>
-                      </>
+                      </div>
                     )}
                   </>
                 )}
@@ -618,10 +668,13 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
         )
       })}
 
-      {/* Add Items Modal */}
+      {/* Add Items Modal - Mobile Optimized */}
       {showAddItemModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center animate-fade-in">
+          <div className="bg-white w-full sm:max-w-2xl sm:rounded-2xl rounded-t-3xl max-h-[90vh] overflow-hidden flex flex-col animate-slide-up sm:animate-scale-in fixed-bottom-safe sm:relative">
+            {/* Drag handle for mobile */}
+            <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mt-3 mb-1 sm:hidden" />
+            
             <div className="p-4 border-b border-gray-200">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-xl font-bold text-gray-900">Add Items to Order</h3>
@@ -630,26 +683,27 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
                     setShowAddItemModal(false)
                     setSearchQuery('')
                   }}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors touch-feedback"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search items by name, description, or category..."
-                  className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none transition-colors text-sm"
+                  placeholder="Search items..."
+                  className="w-full pl-12 pr-4 py-3.5 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors text-base"
                   autoFocus
+                  enterKeyHint="search"
                 />
                 {searchQuery && (
                   <button
                     onClick={() => setSearchQuery('')}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 p-1 hover:bg-gray-100 rounded-full transition-colors"
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 p-1.5 hover:bg-gray-100 rounded-full transition-colors touch-feedback"
                   >
                     <X className="w-4 h-4 text-gray-400" />
                   </button>
@@ -663,7 +717,7 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
               )}
             </div>
             
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-auto p-4 scroll-momentum">
               {filteredMenuItems.length === 0 ? (
                 <div className="text-center py-12">
                   <Search className="w-12 h-12 text-gray-300 mx-auto mb-3" />
@@ -679,16 +733,16 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
                     return (
                       <div
                         key={item.id}
-                        className={`border-2 rounded-lg p-3 transition-all ${
+                        className={`border-2 rounded-xl p-4 transition-all touch-feedback ${
                           inOrder ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
                         }`}
                       >
-                        <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-start justify-between gap-3">
                           <div className="flex-1 min-w-0">
                             <h4 className="font-semibold text-gray-900 text-sm">
                               {item.name}
                             </h4>
-                            <p className="text-xs text-gray-500 line-clamp-1 mb-1">
+                            <p className="text-xs text-gray-500 line-clamp-1 mb-2">
                               {item.description}
                             </p>
                             <div className="flex items-center gap-2">
@@ -708,9 +762,9 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
                           </div>
                           <button
                             onClick={() => handleAddItemToOrder(item)}
-                            className="bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700 transition-all active:scale-95 flex-shrink-0"
+                            className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 transition-all touch-feedback flex-shrink-0"
                           >
-                            <Plus className="w-4 h-4" />
+                            <Plus className="w-5 h-5" />
                           </button>
                         </div>
                       </div>
@@ -720,13 +774,13 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
               )}
             </div>
 
-            <div className="p-4 border-t border-gray-200">
+            <div className="p-4 border-t border-gray-200 bg-white">
               <button
                 onClick={() => {
                   setShowAddItemModal(false)
                   setSearchQuery('')
                 }}
-                className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition-all"
+                className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 transition-all touch-feedback-strong"
               >
                 Done ({editedItems.length} items)
               </button>
