@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useEffect, Suspense, lazy, useCallback } from 'react'
+import { useState, useEffect, Suspense, lazy, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { generateSessionId } from '@/lib/utils/helpers'
 import toast from 'react-hot-toast'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Bell, BellOff } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 // Lazy load components
@@ -44,6 +44,76 @@ export default function TablePage() {
   const [activeTab, setActiveTab] = useState<'manual' | 'ai' | 'orders'>('manual')
   const [cartCount, setCartCount] = useState(0)
   const [activeOrdersCount, setActiveOrdersCount] = useState(0)
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false)
+  const [showNotificationPrompt, setShowNotificationPrompt] = useState(false)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  // Initialize audio element
+  useEffect(() => {
+    audioRef.current = new Audio('/notification.mp3')
+    audioRef.current.volume = 0.7
+  }, [])
+
+  // Play notification sound
+  const playNotificationSound = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0
+      audioRef.current.play().catch((err) => {
+        console.log('Audio play failed:', err)
+      })
+    }
+  }, [])
+
+  // Register service worker
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js')
+        .then((registration) => {
+          console.log('Service Worker registered:', registration.scope)
+        })
+        .catch((error) => {
+          console.error('Service Worker registration failed:', error)
+        })
+    }
+  }, [])
+
+  // Check notification permission on load
+  useEffect(() => {
+    if ('Notification' in window) {
+      if (Notification.permission === 'granted') {
+        setNotificationsEnabled(true)
+      } else if (Notification.permission === 'default') {
+        // Show prompt after a short delay
+        setTimeout(() => setShowNotificationPrompt(true), 2000)
+      }
+    }
+  }, [])
+
+  // Request notification permission
+  const requestNotificationPermission = async () => {
+    if (!('Notification' in window)) {
+      toast.error('Notifications not supported')
+      return
+    }
+
+    try {
+      const permission = await Notification.requestPermission()
+      if (permission === 'granted') {
+        setNotificationsEnabled(true)
+        setShowNotificationPrompt(false)
+        toast.success('Notifications enabled!')
+        
+        // Play test sound
+        playNotificationSound()
+      } else {
+        toast.error('Notifications blocked')
+        setShowNotificationPrompt(false)
+      }
+    } catch (error) {
+      console.error('Notification permission error:', error)
+      toast.error('Failed to enable notifications')
+    }
+  }
 
   useEffect(() => {
     if (!tableId) return
@@ -82,7 +152,6 @@ export default function TablePage() {
 
     fetchOrdersCount()
 
-    // Subscribe to order changes
     const supabase = createClient()
     const channel = supabase
       .channel(`orders_count_${sessionId}`)
@@ -103,13 +172,9 @@ export default function TablePage() {
     }
   }, [sessionId, tableId])
 
-  // Notifications
+  // Order status notifications
   useEffect(() => {
     if (!sessionId || !tableId) return
-
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission()
-    }
 
     const supabase = createClient()
 
@@ -128,25 +193,49 @@ export default function TablePage() {
           const oldOrder = payload.old as any
 
           if (order.status !== oldOrder.status) {
-            const statusMessages: Record<string, { message: string }> = {
-              preparing: { message: 'Your order is being prepared' },
-              ready: { message: 'Your order is ready!' },
-              served: { message: 'Enjoy your meal!' },
-              cancelled: { message: 'Order was cancelled' },
+            const statusMessages: Record<string, { message: string; emoji: string }> = {
+              preparing: { message: 'Your order is being prepared', emoji: '👨‍🍳' },
+              ready: { message: 'Your order is ready for pickup!', emoji: '🔔' },
+              served: { message: 'Enjoy your meal!', emoji: '🍽️' },
+              cancelled: { message: 'Order was cancelled', emoji: '❌' },
             }
 
             const notification = statusMessages[order.status]
             if (notification) {
-              toast.success(notification.message, { duration: 4000 })
+              // Always show toast
+              toast.success(notification.message, { 
+                duration: 5000,
+                icon: notification.emoji
+              })
 
-              if (Notification.permission === 'granted') {
-                new Notification('Order Update', {
-                  body: notification.message,
-                  icon: '/icon-192.png',
-                  tag: order.id,
-                })
+              // Play sound for important status changes
+              if (order.status === 'ready' || order.status === 'preparing') {
+                playNotificationSound()
               }
 
+              // Show browser notification
+              if (Notification.permission === 'granted') {
+                try {
+                  const notif = new Notification('Order Update', {
+                    body: notification.message,
+                    icon: '/icon-192.png',
+                    tag: order.id,
+                    requireInteraction: order.status === 'ready',
+                    vibrate: [200, 100, 200],
+                    silent: false, // Allow sound
+                  } as NotificationOptions)
+
+                  notif.onclick = () => {
+                    window.focus()
+                    handleTabChange('orders')
+                    notif.close()
+                  }
+                } catch (error) {
+                  console.error('Notification error:', error)
+                }
+              }
+
+              // Switch to orders tab when ready
               if (order.status === 'ready') {
                 setTimeout(() => handleTabChange('orders'), 1500)
               }
@@ -159,7 +248,7 @@ export default function TablePage() {
     return () => {
       supabase.removeChannel(ordersChannel)
     }
-  }, [sessionId, tableId, handleTabChange])
+  }, [sessionId, tableId, handleTabChange, playNotificationSound])
 
   const handleOrderConfirmed = async (items: any[], totalAmount: number) => {
     try {
@@ -172,7 +261,7 @@ export default function TablePage() {
       const result = await response.json()
       if (result.success) {
         toast.success('Order placed!')
-        setCartCount(0) // Clear cart count after order
+        setCartCount(0)
         handleTabChange('orders')
       } else {
         throw new Error(result.error || 'Failed')
@@ -182,7 +271,6 @@ export default function TablePage() {
     }
   }
 
-  // Update cart count from ManualMenu
   const handleCartChange = useCallback((count: number) => {
     setCartCount(count)
   }, [])
@@ -218,16 +306,60 @@ export default function TablePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Notification Permission Prompt */}
+      {showNotificationPrompt && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-gray-900 text-white px-4 py-3 animate-slide-down">
+          <div className="max-w-4xl mx-auto flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 flex-1">
+              <Bell className="w-5 h-5 flex-shrink-0" />
+              <p className="text-sm">Enable notifications to get order updates</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowNotificationPrompt(false)}
+                className="text-xs text-gray-400 hover:text-white px-2 py-1"
+              >
+                Later
+              </button>
+              <button
+                onClick={requestNotificationPermission}
+                className="text-xs bg-white text-gray-900 px-3 py-1.5 rounded-lg font-medium hover:bg-gray-100"
+              >
+                Enable
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
+      <div className={`bg-white border-b border-gray-200 sticky top-0 z-40 ${showNotificationPrompt ? 'mt-12' : ''}`}>
         <div className="max-w-4xl mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <h1 className="text-lg font-semibold text-gray-900">
               Table {tableId.length > 10 ? `${tableId.slice(0, 10)}...` : tableId}
             </h1>
-            <span className="text-xs text-gray-400 font-mono">
-              {sessionId.slice(0, 6)}
-            </span>
+            <div className="flex items-center gap-3">
+              {/* Notification status indicator */}
+              <button
+                onClick={requestNotificationPermission}
+                className={`p-2 rounded-lg transition-colors ${
+                  notificationsEnabled 
+                    ? 'text-green-600 bg-green-50' 
+                    : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+                }`}
+                title={notificationsEnabled ? 'Notifications enabled' : 'Enable notifications'}
+              >
+                {notificationsEnabled ? (
+                  <Bell className="w-4 h-4" />
+                ) : (
+                  <BellOff className="w-4 h-4" />
+                )}
+              </button>
+              <span className="text-xs text-gray-400 font-mono">
+                {sessionId.slice(0, 6)}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -248,7 +380,6 @@ export default function TablePage() {
                   }`}
                 >
                   {tab.label}
-                  {/* Badge */}
                   {tab.badge > 0 && (
                     <span className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-xs font-bold rounded-full ${
                       isActive 
