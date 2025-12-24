@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense, lazy, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { generateSessionId } from '@/lib/utils/helpers'
 import toast from 'react-hot-toast'
-import { Loader2, Bell, BellOff } from 'lucide-react'
+import { Loader2, Bell, BellOff, Volume2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 // Lazy load components
@@ -47,20 +47,68 @@ export default function TablePage() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(false)
   const [showNotificationPrompt, setShowNotificationPrompt] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const swRegistration = useRef<ServiceWorkerRegistration | null>(null)
 
   // Initialize audio element
   useEffect(() => {
     audioRef.current = new Audio('/notification.mp3')
-    audioRef.current.volume = 0.7
+    audioRef.current.volume = 0.8
+    // Preload audio
+    audioRef.current.load()
   }, [])
 
   // Play notification sound
   const playNotificationSound = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.currentTime = 0
-      audioRef.current.play().catch((err) => {
-        console.log('Audio play failed:', err)
-      })
+      const playPromise = audioRef.current.play()
+      if (playPromise !== undefined) {
+        playPromise.catch((err) => {
+          console.log('Audio play requires user interaction:', err)
+        })
+      }
+    }
+  }, [])
+
+  // Show notification via Service Worker (more reliable)
+  const showNotification = useCallback((title: string, body: string, tag: string) => {
+    // Try Service Worker first (works better in background)
+    if (swRegistration.current && Notification.permission === 'granted') {
+      if (navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({
+          type: 'SHOW_NOTIFICATION',
+          title,
+          body,
+          tag,
+          url: window.location.href
+        })
+        return
+      }
+      
+      // Fallback to direct service worker notification
+      swRegistration.current.showNotification(title, {
+        body,
+        icon: '/icon-192.png',
+        badge: '/icon-192.png',
+        tag,
+        requireInteraction: true,
+        vibrate: [200, 100, 200, 100, 200],
+      }).catch(console.error)
+      return
+    }
+
+    // Last resort: regular Notification API
+    if ('Notification' in window && Notification.permission === 'granted') {
+      try {
+        new Notification(title, {
+          body,
+          icon: '/icon-192.png',
+          tag,
+          requireInteraction: true,
+        })
+      } catch (error) {
+        console.error('Notification error:', error)
+      }
     }
   }, [])
 
@@ -70,6 +118,10 @@ export default function TablePage() {
       navigator.serviceWorker.register('/sw.js')
         .then((registration) => {
           console.log('Service Worker registered:', registration.scope)
+          swRegistration.current = registration
+          
+          // Update service worker if there's a new version
+          registration.update()
         })
         .catch((error) => {
           console.error('Service Worker registration failed:', error)
@@ -83,7 +135,6 @@ export default function TablePage() {
       if (Notification.permission === 'granted') {
         setNotificationsEnabled(true)
       } else if (Notification.permission === 'default') {
-        // Show prompt after a short delay
         setTimeout(() => setShowNotificationPrompt(true), 2000)
       }
     }
@@ -92,7 +143,7 @@ export default function TablePage() {
   // Request notification permission
   const requestNotificationPermission = async () => {
     if (!('Notification' in window)) {
-      toast.error('Notifications not supported')
+      toast.error('Notifications not supported on this browser')
       return
     }
 
@@ -103,16 +154,26 @@ export default function TablePage() {
         setShowNotificationPrompt(false)
         toast.success('Notifications enabled!')
         
-        // Play test sound
+        // Test notification
+        showNotification('Notifications Enabled', 'You will receive order updates here', 'test')
         playNotificationSound()
+      } else if (permission === 'denied') {
+        toast.error('Notifications blocked. Enable in browser settings.')
+        setShowNotificationPrompt(false)
       } else {
-        toast.error('Notifications blocked')
+        toast.error('Notification permission dismissed')
         setShowNotificationPrompt(false)
       }
     } catch (error) {
       console.error('Notification permission error:', error)
       toast.error('Failed to enable notifications')
     }
+  }
+
+  // Test sound button handler
+  const testSound = () => {
+    playNotificationSound()
+    toast.success('Sound test!', { duration: 1500 })
   }
 
   useEffect(() => {
@@ -194,45 +255,32 @@ export default function TablePage() {
 
           if (order.status !== oldOrder.status) {
             const statusMessages: Record<string, { message: string; emoji: string }> = {
-              preparing: { message: 'Your order is being prepared', emoji: '👨‍🍳' },
-              ready: { message: 'Your order is ready for pickup!', emoji: '🔔' },
-              served: { message: 'Enjoy your meal!', emoji: '🍽️' },
-              cancelled: { message: 'Order was cancelled', emoji: '❌' },
+              preparing: { message: 'Your order is being prepared by the kitchen', emoji: '👨‍🍳' },
+              ready: { message: 'Your order is ready! Please collect it now', emoji: '🔔' },
+              served: { message: 'Order delivered. Enjoy your meal!', emoji: '🍽️' },
+              cancelled: { message: 'Your order was cancelled', emoji: '❌' },
             }
 
             const notification = statusMessages[order.status]
             if (notification) {
               // Always show toast
               toast.success(notification.message, { 
-                duration: 5000,
+                duration: 6000,
                 icon: notification.emoji
               })
 
-              // Play sound for important status changes
+              // Play sound for important updates
               if (order.status === 'ready' || order.status === 'preparing') {
                 playNotificationSound()
               }
 
               // Show browser notification
               if (Notification.permission === 'granted') {
-                try {
-                  const notif = new Notification('Order Update', {
-                    body: notification.message,
-                    icon: '/icon-192.png',
-                    tag: order.id,
-                    requireInteraction: order.status === 'ready',
-                    vibrate: [200, 100, 200],
-                    silent: false, // Allow sound
-                  } as NotificationOptions)
-
-                  notif.onclick = () => {
-                    window.focus()
-                    handleTabChange('orders')
-                    notif.close()
-                  }
-                } catch (error) {
-                  console.error('Notification error:', error)
-                }
+                showNotification(
+                  `Order ${order.status === 'ready' ? 'Ready!' : 'Update'}`,
+                  notification.message,
+                  `order-${order.id}-${order.status}`
+                )
               }
 
               // Switch to orders tab when ready
@@ -248,7 +296,7 @@ export default function TablePage() {
     return () => {
       supabase.removeChannel(ordersChannel)
     }
-  }, [sessionId, tableId, handleTabChange, playNotificationSound])
+  }, [sessionId, tableId, handleTabChange, playNotificationSound, showNotification])
 
   const handleOrderConfirmed = async (items: any[], totalAmount: number) => {
     try {
@@ -308,11 +356,11 @@ export default function TablePage() {
     <div className="min-h-screen bg-gray-50">
       {/* Notification Permission Prompt */}
       {showNotificationPrompt && (
-        <div className="fixed top-0 left-0 right-0 z-50 bg-gray-900 text-white px-4 py-3 animate-slide-down">
+        <div className="fixed top-0 left-0 right-0 z-50 bg-gray-900 text-white px-4 py-3 animate-slide-down safe-area-top">
           <div className="max-w-4xl mx-auto flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 flex-1">
               <Bell className="w-5 h-5 flex-shrink-0" />
-              <p className="text-sm">Enable notifications to get order updates</p>
+              <p className="text-sm">Enable notifications for order updates</p>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -339,8 +387,16 @@ export default function TablePage() {
             <h1 className="text-lg font-semibold text-gray-900">
               Table {tableId.length > 10 ? `${tableId.slice(0, 10)}...` : tableId}
             </h1>
-            <div className="flex items-center gap-3">
-              {/* Notification status indicator */}
+            <div className="flex items-center gap-2">
+              {/* Sound test button */}
+              <button
+                onClick={testSound}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Test sound"
+              >
+                <Volume2 className="w-4 h-4" />
+              </button>
+              {/* Notification status */}
               <button
                 onClick={requestNotificationPermission}
                 className={`p-2 rounded-lg transition-colors ${
@@ -348,7 +404,7 @@ export default function TablePage() {
                     ? 'text-green-600 bg-green-50' 
                     : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
                 }`}
-                title={notificationsEnabled ? 'Notifications enabled' : 'Enable notifications'}
+                title={notificationsEnabled ? 'Notifications on' : 'Enable notifications'}
               >
                 {notificationsEnabled ? (
                   <Bell className="w-4 h-4" />
