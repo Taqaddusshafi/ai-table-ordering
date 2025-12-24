@@ -92,7 +92,6 @@ export default function TablePage() {
         badge: '/icon-192.png',
         tag,
         requireInteraction: true,
-        vibrate: [200, 100, 200, 100, 200],
       }).catch(console.error)
       return
     }
