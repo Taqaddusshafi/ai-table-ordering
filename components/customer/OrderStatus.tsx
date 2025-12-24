@@ -4,38 +4,87 @@ import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate } from '@/lib/utils/helpers'
 import toast from 'react-hot-toast'
-import { Clock, CheckCircle, Loader2, Package, CreditCard, Receipt, XCircle, AlertCircle, Edit, Plus, Minus, X, Save, ShoppingCart, Search, Bell, RefreshCw } from 'lucide-react'
+import { 
+  Clock, CheckCircle, Loader2, Package, CreditCard, Receipt, XCircle, 
+  AlertCircle, Edit, Plus, Minus, X, Save, ShoppingCart, Search, Bell, 
+  RefreshCw, ChefHat, Utensils
+} from 'lucide-react'
 
 interface OrderStatusProps {
   tableId: string
   sessionId: string
 }
 
-// Skeleton component for order cards
+// Clean skeleton component
 function OrderSkeleton() {
   return (
-    <div className="bg-white rounded-2xl border-2 border-gray-100 overflow-hidden animate-pulse">
-      <div className="bg-gray-50 px-4 py-3 border-b border-gray-100">
+    <div className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+      <div className="p-5 space-y-4">
         <div className="flex items-center justify-between">
-          <div className="skeleton w-24 h-5 rounded-full" />
-          <div className="skeleton w-32 h-4" />
+          <div className="flex items-center gap-3">
+            <div className="skeleton w-10 h-10 rounded-xl" />
+            <div className="space-y-2">
+              <div className="skeleton h-4 w-24 rounded" />
+              <div className="skeleton h-3 w-32 rounded" />
+            </div>
+          </div>
+          <div className="skeleton h-6 w-20 rounded-full" />
         </div>
-      </div>
-      <div className="p-4 space-y-4">
         <div className="space-y-2">
           {[1, 2].map((i) => (
-            <div key={i} className="skeleton h-12 rounded-lg" />
+            <div key={i} className="skeleton h-14 rounded-xl" />
           ))}
         </div>
         <div className="flex justify-between pt-3 border-t border-gray-100">
-          <div className="skeleton w-16 h-6" />
+          <div className="skeleton w-16 h-5" />
           <div className="skeleton w-20 h-6" />
         </div>
-        <div className="flex gap-2">
-          <div className="skeleton flex-1 h-10 rounded-lg" />
-          <div className="skeleton flex-1 h-10 rounded-lg" />
-        </div>
       </div>
+    </div>
+  )
+}
+
+// Status progress bar
+function StatusProgress({ currentStatus }: { currentStatus: string }) {
+  const steps = [
+    { id: 'pending', label: 'Received' },
+    { id: 'preparing', label: 'Preparing' },
+    { id: 'ready', label: 'Ready' },
+  ]
+  
+  const statusOrder = ['pending', 'preparing', 'ready', 'served']
+  const currentIndex = statusOrder.indexOf(currentStatus)
+  
+  if (currentStatus === 'cancelled' || currentStatus === 'served') {
+    return null
+  }
+
+  return (
+    <div className="flex items-center gap-1 mb-4">
+      {steps.map((step, index) => {
+        const stepIndex = statusOrder.indexOf(step.id)
+        const isCompleted = stepIndex < currentIndex
+        const isCurrent = stepIndex === currentIndex
+        
+        return (
+          <div key={step.id} className="flex items-center flex-1">
+            <div className="flex flex-col items-center flex-1">
+              <div className={`w-full h-1.5 rounded-full ${
+                isCompleted 
+                  ? 'bg-green-500' 
+                  : isCurrent 
+                    ? 'bg-gray-900' 
+                    : 'bg-gray-200'
+              }`} />
+              <span className={`text-xs mt-1.5 font-medium ${
+                isCompleted ? 'text-green-600' : isCurrent ? 'text-gray-900' : 'text-gray-400'
+              }`}>
+                {step.label}
+              </span>
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -54,12 +103,10 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [sendingReminderId, setSendingReminderId] = useState<string | null>(null)
 
-  // Update current time every second for countdown
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentTime(Date.now())
     }, 1000)
-
     return () => clearInterval(interval)
   }, [])
 
@@ -85,7 +132,6 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
 
   useEffect(() => {
     if (!tableId || !sessionId) return
-
     fetchOrders()
 
     const supabase = createClient()
@@ -108,7 +154,6 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
     }
   }, [tableId, sessionId, fetchOrders])
 
-  // Fetch menu items when edit mode is activated
   useEffect(() => {
     if (editingOrderId) {
       fetchMenuItems()
@@ -131,15 +176,13 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
   const handleRefresh = () => {
     setIsRefreshing(true)
     fetchOrders()
-    toast.success('Refreshed!', { duration: 1500 })
+    toast.success('Refreshed', { duration: 1500 })
   }
 
   const canModifyOrder = (order: any) => {
     if (order.status !== 'pending') return false
-    
     const orderTime = new Date(order.created_at).getTime()
     const minutesElapsed = (currentTime - orderTime) / 1000 / 60
-    
     return minutesElapsed <= 2
   }
 
@@ -147,19 +190,15 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
     const orderTime = new Date(order.created_at).getTime()
     const minutesElapsed = (currentTime - orderTime) / 1000 / 60
     const secondsRemaining = Math.max(0, Math.floor((2 - minutesElapsed) * 60))
-    
     const mins = Math.floor(secondsRemaining / 60)
     const secs = secondsRemaining % 60
-    
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
   const canSendReminder = (order: any) => {
     if (order.status !== 'pending') return false
-    
     const lastTime = order.last_reminder_at || order.created_at
     const timeSince = (currentTime - new Date(lastTime).getTime()) / 1000 / 60
-    
     return timeSince >= 10
   }
 
@@ -167,10 +206,8 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
     const lastTime = order.last_reminder_at || order.created_at
     const timeSince = (currentTime - new Date(lastTime).getTime()) / 1000 / 60
     const timeLeft = Math.max(0, 10 - timeSince)
-    
     const mins = Math.floor(timeLeft)
     const secs = Math.floor((timeLeft - mins) * 60)
-    
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
@@ -187,15 +224,12 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
       const result = await response.json()
 
       if (result.success) {
-        const ordinal = result.reminderCount === 1 ? 'st' : result.reminderCount === 2 ? 'nd' : result.reminderCount === 3 ? 'rd' : 'th'
-        toast.success(`✅ Reminder sent to admin! (${result.reminderCount}${ordinal} reminder)`, {
-          duration: 4000
-        })
+        toast.success(`Reminder sent (${result.reminderCount})`, { duration: 3000 })
       } else {
-        throw new Error(result.error || 'Failed to send reminder')
+        throw new Error(result.error || 'Failed')
       }
     } catch (error: any) {
-      toast.error(error.message || 'Failed to send reminder')
+      toast.error(error.message || 'Failed')
     } finally {
       setSendingReminderId(null)
     }
@@ -228,7 +262,7 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
       setEditedItems(prev =>
         prev.map(i => i.id === menuItem.id ? { ...i, quantity: i.quantity + 1 } : i)
       )
-      toast.success(`Increased ${menuItem.name} quantity`)
+      toast.success(`+1 ${menuItem.name}`)
     } else {
       setEditedItems(prev => [...prev, {
         id: menuItem.id,
@@ -263,13 +297,13 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
       const result = await response.json()
 
       if (result.success) {
-        toast.success('Order updated successfully!')
+        toast.success('Order updated')
         setEditingOrderId(null)
         setEditedItems([])
         setShowAddItemModal(false)
         setSearchQuery('')
       } else {
-        throw new Error(result.error || 'Failed to update order')
+        throw new Error(result.error || 'Failed')
       }
     } catch (error: any) {
       toast.error(error.message)
@@ -286,7 +320,7 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
   }
 
   const handleCancelOrder = async (orderId: string) => {
-    if (!confirm('Are you sure you want to cancel this order?')) return
+    if (!confirm('Cancel this order?')) return
 
     setCancellingOrderId(orderId)
 
@@ -300,9 +334,9 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
       const result = await response.json()
 
       if (result.success) {
-        toast.success('Order cancelled successfully!')
+        toast.success('Order cancelled')
       } else {
-        throw new Error(result.error || 'Failed to cancel order')
+        throw new Error(result.error || 'Failed')
       }
     } catch (error: any) {
       toast.error(error.message)
@@ -312,36 +346,41 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
   }
 
   const getStatusConfig = (status: string) => {
-    const configs: Record<string, { color: string; bg: string; icon: any; text: string }> = {
+    const configs: Record<string, { 
+      bg: string; 
+      text: string;
+      icon: any; 
+      label: string;
+    }> = {
       pending: {
-        color: 'text-yellow-700',
-        bg: 'bg-yellow-50 border-yellow-200',
+        bg: 'bg-amber-50',
+        text: 'text-amber-700',
         icon: Clock,
-        text: 'Pending'
+        label: 'Pending'
       },
       preparing: {
-        color: 'text-blue-700',
-        bg: 'bg-blue-50 border-blue-200',
-        icon: Package,
-        text: 'Preparing'
+        bg: 'bg-blue-50',
+        text: 'text-blue-700',
+        icon: ChefHat,
+        label: 'Preparing'
       },
       ready: {
-        color: 'text-green-700',
-        bg: 'bg-green-50 border-green-200',
-        icon: CheckCircle,
-        text: 'Ready'
+        bg: 'bg-green-50',
+        text: 'text-green-700',
+        icon: Utensils,
+        label: 'Ready'
       },
       served: {
-        color: 'text-gray-700',
-        bg: 'bg-gray-50 border-gray-200',
+        bg: 'bg-gray-50',
+        text: 'text-gray-600',
         icon: CheckCircle,
-        text: 'Served'
+        label: 'Served'
       },
       cancelled: {
-        color: 'text-red-700',
-        bg: 'bg-red-50 border-red-200',
+        bg: 'bg-red-50',
+        text: 'text-red-600',
         icon: XCircle,
-        text: 'Cancelled'
+        label: 'Cancelled'
       }
     }
     return configs[status] || configs.pending
@@ -365,35 +404,32 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
 
   if (!orders.length) {
     return (
-      <div className="bg-white rounded-2xl border-2 border-gray-100 p-8 sm:p-12 animate-fade-in">
-        <div className="text-center">
-          <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Receipt className="w-10 h-10 text-gray-400" />
-          </div>
-          <h3 className="text-xl font-bold text-gray-900 mb-2">No Orders Yet</h3>
-          <p className="text-base text-gray-500">
-            Start browsing our menu to place your first order!
-          </p>
+      <div className="bg-white rounded-2xl border border-gray-100 p-10 text-center">
+        <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <Receipt className="w-7 h-7 text-gray-400" />
         </div>
+        <h3 className="text-lg font-semibold text-gray-900 mb-1">No Orders</h3>
+        <p className="text-gray-500">Place your first order from the menu</p>
       </div>
     )
   }
 
   return (
     <div className="space-y-4">
-      {/* Refresh Button */}
-      <div className="flex justify-end mb-2">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <h2 className="text-lg font-semibold text-gray-900">Your Orders</h2>
         <button
           onClick={handleRefresh}
           disabled={isRefreshing}
-          className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors touch-feedback"
+          className="flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors px-3 py-1.5 rounded-lg hover:bg-gray-100"
         >
           <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
           Refresh
         </button>
       </div>
 
-      {orders.map((order, orderIndex) => {
+      {orders.map((order) => {
         const statusConfig = getStatusConfig(order.status)
         const StatusIcon = statusConfig.icon
         const canModify = canModifyOrder(order)
@@ -408,144 +444,119 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
         return (
           <div
             key={order.id}
-            className="bg-white rounded-2xl border-2 border-gray-100 overflow-hidden shadow-sm hover:shadow-md transition-all animate-fade-in-up"
-            style={{ animationDelay: `${orderIndex * 0.1}s` }}
+            className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm"
           >
-            {/* Order Header */}
-            <div className={`${statusConfig.bg} px-4 py-3 border-b-2`}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <StatusIcon className={`w-5 h-5 ${statusConfig.color}`} />
-                  <span className={`text-sm font-bold ${statusConfig.color}`}>
-                    {statusConfig.text}
-                  </span>
-                  {isEditing && (
-                    <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full animate-pulse">
-                      Editing
-                    </span>
-                  )}
+            {/* Header */}
+            <div className="px-5 pt-5 pb-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 ${statusConfig.bg} rounded-xl flex items-center justify-center`}>
+                    <StatusIcon className={`w-5 h-5 ${statusConfig.text}`} />
+                  </div>
+                  <div>
+                    <p className={`font-semibold ${statusConfig.text}`}>{statusConfig.label}</p>
+                    <p className="text-xs text-gray-500">{formatDate(order.created_at)}</p>
+                  </div>
                 </div>
-                <span className="text-xs text-gray-600">
-                  {formatDate(order.created_at)}
-                </span>
+                {isEditing && (
+                  <span className="text-xs bg-gray-900 text-white px-2.5 py-1 rounded-full font-medium">
+                    Editing
+                  </span>
+                )}
               </div>
-            </div>
 
-            {/* Order Body */}
-            <div className="p-4">
-              {/* Modify Warning - Real-time countdown */}
+              {/* Status Progress */}
+              <StatusProgress currentStatus={order.status} />
+
+              {/* Modify Timer */}
               {canModify && !isEditing && (
-                <div className="mb-4 bg-blue-50 border-2 border-blue-200 rounded-xl p-3 flex items-start gap-3">
-                  <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-3">
+                  <Clock className="w-5 h-5 text-amber-600 flex-shrink-0" />
                   <div className="flex-1">
-                    <p className="text-sm font-semibold text-blue-800">
-                      Time remaining: <span className="text-lg font-mono bg-blue-100 px-2 py-0.5 rounded">{timeRemaining}</span>
-                    </p>
-                    <p className="text-xs text-blue-700 mt-1">
-                      You can edit or cancel this order within 2 minutes
+                    <p className="text-sm text-amber-800">
+                      <span className="font-mono font-bold text-base">{timeRemaining}</span>
+                      <span className="ml-1.5">to modify order</span>
                     </p>
                   </div>
                 </div>
               )}
+            </div>
 
-              {/* Order Items */}
-              <div className="mb-4">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-sm font-semibold text-gray-700">
-                    Items:
-                  </p>
-                  {isEditing && (
-                    <button
-                      onClick={() => setShowAddItemModal(true)}
-                      className="text-xs bg-blue-600 text-white px-3 py-2 rounded-lg font-semibold flex items-center gap-1.5 hover:bg-blue-700 transition-all touch-feedback"
+            {/* Items */}
+            <div className="px-5 pb-5">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-medium text-gray-700">Items</p>
+                {isEditing && (
+                  <button
+                    onClick={() => setShowAddItemModal(true)}
+                    className="text-xs bg-gray-900 text-white px-3 py-1.5 rounded-lg font-medium flex items-center gap-1 hover:bg-gray-800 transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Add
+                  </button>
+                )}
+              </div>
+              
+              <div className="space-y-2">
+                {isEditing ? (
+                  editedItems.map((item: any) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between gap-3 bg-gray-50 p-3 rounded-xl"
                     >
-                      <Plus className="w-4 h-4" />
-                      Add Items
-                    </button>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  {isEditing ? (
-                    editedItems.map((item: any) => (
-                      <div
-                        key={item.id}
-                        className="flex items-center justify-between gap-2 bg-blue-50 p-3 rounded-xl border border-blue-200"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <span className="font-medium text-gray-900 text-sm">
-                            {item.name}
-                          </span>
-                          <span className="text-xs text-gray-500 block">
-                            ₹{item.price} each
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => updateEditQuantity(item.id, item.quantity - 1)}
-                            className="w-9 h-9 bg-white border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center touch-feedback"
-                          >
-                            {item.quantity === 1 ? <X className="w-4 h-4" /> : <Minus className="w-4 h-4" />}
-                          </button>
-                          <span className="w-8 text-center font-bold text-blue-600">
-                            {item.quantity}
-                          </span>
-                          <button
-                            onClick={() => updateEditQuantity(item.id, item.quantity + 1)}
-                            className="w-9 h-9 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all flex items-center justify-center touch-feedback"
-                          >
-                            <Plus className="w-4 h-4" />
-                          </button>
-                        </div>
-                        <span className="font-semibold text-gray-900 ml-2 text-sm">
-                          ₹{item.price * item.quantity}
-                        </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-gray-900 truncate">{item.name}</p>
+                        <p className="text-sm text-gray-500">₹{item.price} each</p>
                       </div>
-                    ))
-                  ) : (
-                    order.order_items?.map((item: any) => (
-                      <div
-                        key={item.id}
-                        className="flex items-center justify-between text-sm bg-gray-50 p-3 rounded-xl"
-                      >
-                        <div className="flex-1">
-                          <span className="font-medium text-gray-900">
-                            {item.quantity}× {item.menu_item?.name || 'Item'}
-                          </span>
-                          <span className="text-xs text-gray-500 ml-2">
-                            @ ₹{item.price}
-                          </span>
-                        </div>
-                        <span className="font-semibold text-gray-900">
-                          ₹{item.price * item.quantity}
-                        </span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => updateEditQuantity(item.id, item.quantity - 1)}
+                          className="w-8 h-8 bg-white border border-gray-200 rounded-lg flex items-center justify-center hover:bg-gray-100"
+                        >
+                          {item.quantity === 1 ? <X className="w-3.5 h-3.5" /> : <Minus className="w-3.5 h-3.5" />}
+                        </button>
+                        <span className="w-6 text-center font-medium">{item.quantity}</span>
+                        <button
+                          onClick={() => updateEditQuantity(item.id, item.quantity + 1)}
+                          className="w-8 h-8 bg-gray-900 text-white rounded-lg flex items-center justify-center hover:bg-gray-800"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
                       </div>
-                    ))
-                  )}
-                </div>
+                      <p className="font-medium text-gray-900 w-16 text-right">₹{item.price * item.quantity}</p>
+                    </div>
+                  ))
+                ) : (
+                  order.order_items?.map((item: any) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded-xl"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-gray-900 truncate">
+                          {item.quantity}× {item.menu_item?.name || 'Item'}
+                        </p>
+                        <p className="text-sm text-gray-500">₹{item.price} each</p>
+                      </div>
+                      <p className="font-medium text-gray-900">₹{item.price * item.quantity}</p>
+                    </div>
+                  ))
+                )}
               </div>
 
               {/* Total */}
-              <div className="flex items-center justify-between pt-4 border-t-2 border-gray-100 mb-4">
-                <span className="text-lg font-bold text-gray-900">
-                  Total:
-                </span>
-                <span className="text-2xl font-bold text-blue-600">
-                  ₹{displayTotal}
-                </span>
+              <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
+                <span className="font-medium text-gray-600">Total</span>
+                <span className="text-xl font-bold text-gray-900">₹{displayTotal}</span>
               </div>
 
-              {/* Reminder Button for Pending Orders */}
+              {/* Reminder */}
               {order.status === 'pending' && !isEditing && (
-                <div className="mb-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                <div className="mt-4 p-3 bg-gray-50 rounded-xl">
                   <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <Bell className="w-4 h-4 text-gray-600" />
-                      <span className="text-xs font-semibold text-gray-600">
-                        Admin Reminder
-                      </span>
-                    </div>
+                    <span className="text-sm font-medium text-gray-700">Remind Kitchen</span>
                     {order.reminder_count > 0 && (
-                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">
+                      <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">
                         {order.reminder_count} sent
                       </span>
                     )}
@@ -555,7 +566,7 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
                     <button
                       onClick={() => handleSendReminder(order.id)}
                       disabled={sendingReminderId === order.id}
-                      className="w-full bg-orange-500 hover:bg-orange-600 text-white px-4 py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg touch-feedback"
+                      className="w-full bg-amber-500 text-white py-2.5 rounded-lg font-medium flex items-center justify-center gap-2 hover:bg-amber-600 transition-colors disabled:opacity-50"
                     >
                       {sendingReminderId === order.id ? (
                         <>
@@ -565,208 +576,165 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
                       ) : (
                         <>
                           <Bell className="w-4 h-4" />
-                          Remind Admin
+                          Send Reminder
                         </>
                       )}
                     </button>
                   ) : (
-                    <div className="text-center py-2">
-                      <p className="text-xs text-gray-500">
-                        Next reminder available in{' '}
-                        <span className="font-mono font-semibold text-gray-700 bg-gray-200 px-1.5 py-0.5 rounded">
-                          {getTimeUntilNextReminder(order)}
-                        </span>
-                      </p>
-                    </div>
+                    <p className="text-sm text-gray-500 text-center py-1.5">
+                      Next reminder in <span className="font-mono font-medium">{getTimeUntilNextReminder(order)}</span>
+                    </p>
                   )}
-                  
-                  <p className="text-xs text-gray-500 mt-2 text-center">
-                    Send a notification to admin if order is taking too long
-                  </p>
                 </div>
               )}
 
-              {/* Actions */}
-              <div className="flex flex-col gap-2">
-                {isEditing ? (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleSaveEdit(order.id)}
-                      disabled={savingEdit || editedItems.length === 0}
-                      className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed touch-feedback-strong"
-                    >
-                      {savingEdit ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Saving...
-                        </>
-                      ) : (
-                        <>
-                          <Save className="w-4 h-4" />
-                          Save Changes
-                        </>
-                      )}
-                    </button>
-                    <button
-                      onClick={handleCancelEdit}
-                      disabled={savingEdit}
-                      className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-3 rounded-xl font-semibold transition-all disabled:opacity-50 touch-feedback"
-                    >
-                      Cancel
-                    </button>
-                  </div>
+              {/* Payment Status */}
+              <div className="mt-4 flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-gray-400" />
+                {order.payment_status === 'paid' ? (
+                  <span className="text-sm font-medium text-green-600 flex items-center gap-1">
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    Paid
+                  </span>
                 ) : (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <CreditCard className="w-4 h-4 text-gray-400" />
-                      {order.payment_status === 'paid' ? (
-                        <span className="text-sm font-semibold text-green-600 flex items-center gap-1">
-                          <CheckCircle className="w-4 h-4" />
-                          Paid
-                        </span>
-                      ) : (
-                        <span className="text-sm font-semibold text-yellow-600 flex items-center gap-1">
-                          <Clock className="w-4 h-4" />
-                          Pending Payment
-                        </span>
-                      )}
-                    </div>
-
-                    {canModify && (
-                      <div className="flex gap-2 mt-2">
-                        <button
-                          onClick={() => handleEditOrder(order)}
-                          className="flex-1 bg-blue-500 hover:bg-blue-600 text-white px-4 py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all touch-feedback"
-                        >
-                          <Edit className="w-4 h-4" />
-                          Edit Order
-                        </button>
-                        <button
-                          onClick={() => handleCancelOrder(order.id)}
-                          disabled={cancellingOrderId === order.id}
-                          className="flex-1 bg-red-500 hover:bg-red-600 text-white px-4 py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed touch-feedback"
-                        >
-                          {cancellingOrderId === order.id ? (
-                            <>
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                              Cancelling...
-                            </>
-                          ) : (
-                            <>
-                              <XCircle className="w-4 h-4" />
-                              Cancel
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    )}
-                  </>
+                  <span className="text-sm font-medium text-amber-600 flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5" />
+                    Payment Pending
+                  </span>
                 )}
               </div>
+
+              {/* Actions */}
+              {(isEditing || canModify) && (
+                <div className="mt-4 flex gap-2">
+                  {isEditing ? (
+                    <>
+                      <button
+                        onClick={() => handleSaveEdit(order.id)}
+                        disabled={savingEdit || editedItems.length === 0}
+                        className="flex-1 bg-gray-900 text-white py-3 rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-gray-800 transition-colors disabled:opacity-50"
+                      >
+                        {savingEdit ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          <>
+                            <Save className="w-4 h-4" />
+                            Save
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={handleCancelEdit}
+                        disabled={savingEdit}
+                        className="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl font-medium hover:bg-gray-200 transition-colors disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => handleEditOrder(order)}
+                        className="flex-1 bg-gray-900 text-white py-3 rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-gray-800 transition-colors"
+                      >
+                        <Edit className="w-4 h-4" />
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleCancelOrder(order.id)}
+                        disabled={cancellingOrderId === order.id}
+                        className="flex-1 bg-red-50 text-red-600 py-3 rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-red-100 transition-colors disabled:opacity-50"
+                      >
+                        {cancellingOrderId === order.id ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Cancelling...
+                          </>
+                        ) : (
+                          <>
+                            <XCircle className="w-4 h-4" />
+                            Cancel
+                          </>
+                        )}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )
       })}
 
-      {/* Add Items Modal - Mobile Optimized */}
+      {/* Add Items Modal */}
       {showAddItemModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center animate-fade-in">
-          <div className="bg-white w-full sm:max-w-2xl sm:rounded-2xl rounded-t-3xl max-h-[90vh] overflow-hidden flex flex-col animate-slide-up sm:animate-scale-in fixed-bottom-safe sm:relative">
-            {/* Drag handle for mobile */}
-            <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mt-3 mb-1 sm:hidden" />
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center">
+          <div className="bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[85vh] overflow-hidden flex flex-col">
+            <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mt-3 sm:hidden" />
             
-            <div className="p-4 border-b border-gray-200">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-xl font-bold text-gray-900">Add Items to Order</h3>
-                <button
-                  onClick={() => {
-                    setShowAddItemModal(false)
-                    setSearchQuery('')
-                  }}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors touch-feedback"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="font-semibold text-gray-900">Add Items</h3>
+              <button
+                onClick={() => {
+                  setShowAddItemModal(false)
+                  setSearchQuery('')
+                }}
+                className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
 
+            <div className="px-5 py-3 border-b border-gray-100">
               <div className="relative">
-                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search items..."
-                  className="w-full pl-12 pr-4 py-3.5 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors text-base"
+                  placeholder="Search..."
+                  className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:bg-white focus:border-gray-900 focus:outline-none text-sm"
                   autoFocus
-                  enterKeyHint="search"
                 />
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 p-1.5 hover:bg-gray-100 rounded-full transition-colors touch-feedback"
-                  >
-                    <X className="w-4 h-4 text-gray-400" />
-                  </button>
-                )}
               </div>
-
-              {searchQuery && (
-                <p className="text-xs text-gray-500 mt-2">
-                  Found {filteredMenuItems.length} item{filteredMenuItems.length !== 1 ? 's' : ''}
-                </p>
-              )}
             </div>
             
-            <div className="flex-1 overflow-y-auto p-4 scroll-momentum">
+            <div className="flex-1 overflow-y-auto p-5">
               {filteredMenuItems.length === 0 ? (
-                <div className="text-center py-12">
-                  <Search className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                  <p className="text-gray-500">
-                    {searchQuery ? 'No items found matching your search' : 'No items available'}
-                  </p>
+                <div className="text-center py-10">
+                  <p className="text-gray-500">No items found</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-2">
                   {filteredMenuItems.map((item) => {
                     const inOrder = editedItems.find(i => i.id === item.id)
                     
                     return (
                       <div
                         key={item.id}
-                        className={`border-2 rounded-xl p-4 transition-all touch-feedback ${
-                          inOrder ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                        className={`flex items-center justify-between gap-3 p-3 rounded-xl border transition-colors ${
+                          inOrder ? 'border-gray-900 bg-gray-50' : 'border-gray-200'
                         }`}
                       >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-semibold text-gray-900 text-sm">
-                              {item.name}
-                            </h4>
-                            <p className="text-xs text-gray-500 line-clamp-1 mb-2">
-                              {item.description}
-                            </p>
-                            <div className="flex items-center gap-2">
-                              <p className="text-sm font-bold text-blue-600">
-                                ₹{item.price}
-                              </p>
-                              <span className="text-xs text-gray-400">•</span>
-                              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                                {item.category}
-                              </span>
-                            </div>
-                            {inOrder && (
-                              <p className="text-xs text-blue-600 font-semibold mt-1">
-                                In order: {inOrder.quantity}×
-                              </p>
-                            )}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-gray-900">{item.name}</p>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-gray-900">₹{item.price}</span>
+                            <span className="text-xs text-gray-400">{item.category}</span>
                           </div>
-                          <button
-                            onClick={() => handleAddItemToOrder(item)}
-                            className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 transition-all touch-feedback flex-shrink-0"
-                          >
-                            <Plus className="w-5 h-5" />
-                          </button>
+                          {inOrder && (
+                            <p className="text-xs text-gray-600 mt-0.5">{inOrder.quantity} in order</p>
+                          )}
                         </div>
+                        <button
+                          onClick={() => handleAddItemToOrder(item)}
+                          className="w-9 h-9 bg-gray-900 text-white rounded-lg flex items-center justify-center hover:bg-gray-800 transition-colors flex-shrink-0"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
                       </div>
                     )
                   })}
@@ -774,13 +742,13 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
               )}
             </div>
 
-            <div className="p-4 border-t border-gray-200 bg-white">
+            <div className="p-5 border-t border-gray-100">
               <button
                 onClick={() => {
                   setShowAddItemModal(false)
                   setSearchQuery('')
                 }}
-                className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 transition-all touch-feedback-strong"
+                className="w-full bg-gray-900 text-white py-3 rounded-xl font-medium hover:bg-gray-800 transition-colors"
               >
                 Done ({editedItems.length} items)
               </button>
