@@ -31,6 +31,7 @@ interface ManualMenuProps {
   sessionId: string
   onOrderConfirmed: (items: any[], totalAmount: number) => void
   onSwitchToOrders?: () => void
+  onCartChange?: (count: number) => void
 }
 
 // Lazy loading image component
@@ -110,6 +111,7 @@ export default function ManualMenu({
   sessionId,
   onOrderConfirmed,
   onSwitchToOrders,
+  onCartChange,
 }: ManualMenuProps) {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [cart, setCart] = useState<CartItem[]>([])
@@ -137,6 +139,12 @@ export default function ManualMenu({
     window.addEventListener('scroll', handleScroll, { passive: true })
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
+
+  // Notify parent of cart changes for tab badge
+  useEffect(() => {
+    const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0)
+    onCartChange?.(totalItems)
+  }, [cart, onCartChange])
 
   const scrollToTop = useCallback(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' })
