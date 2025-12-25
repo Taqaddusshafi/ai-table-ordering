@@ -15,6 +15,10 @@ const OrderStatus = lazy(() => import('@/components/customer/OrderStatus'))
 const CreateJoinGroupModal = lazy(() => import('@/components/customer/CreateJoinGroupModal'))
 const GroupOrderBanner = lazy(() => import('@/components/customer/GroupOrderBanner'))
 const GroupOrderSummary = lazy(() => import('@/components/customer/GroupOrderSummary'))
+// Gamification components
+const RewardsBadge = lazy(() => import('@/components/customer/RewardsBadge'))
+const SpinWheel = lazy(() => import('@/components/customer/SpinWheel'))
+const RewardsModal = lazy(() => import('@/components/customer/RewardsModal'))
 
 function TabSkeleton() {
   return (
@@ -52,6 +56,10 @@ export default function TablePage() {
   const [showNotificationPrompt, setShowNotificationPrompt] = useState(false)
   const [showGroupModal, setShowGroupModal] = useState(false)
   const [showGroupSummary, setShowGroupSummary] = useState(false)
+  // Gamification state
+  const [showRewardsModal, setShowRewardsModal] = useState(false)
+  const [showSpinWheel, setShowSpinWheel] = useState(false)
+  const [rewardsKey, setRewardsKey] = useState(0) // Force refresh after spin
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const swRegistration = useRef<ServiceWorkerRegistration | null>(null)
 
@@ -433,6 +441,14 @@ export default function TablePage() {
                   <span className="font-medium text-sm hidden sm:inline">Group Order</span>
                 </button>
               )}
+              {/* Rewards Badge */}
+              <Suspense fallback={<div className="w-20 h-8 bg-gray-100 rounded-xl animate-pulse" />}>
+                <RewardsBadge
+                  key={rewardsKey}
+                  sessionId={sessionId}
+                  onOpenRewards={() => setShowRewardsModal(true)}
+                />
+              </Suspense>
               {/* Sound test button */}
               <button
                 onClick={testSound}
@@ -538,6 +554,8 @@ export default function TablePage() {
               onOrderConfirmed={handleOrderConfirmed}
               onSwitchToOrders={() => handleTabChange('orders')}
               onCartChange={handleCartChange}
+              groupSessionId={group?.id}
+              memberName={memberName}
             />
           )}
 
@@ -589,6 +607,39 @@ export default function TablePage() {
           }}
         />
       </Suspense>
+
+      {/* Rewards Modal */}
+      <Suspense fallback={null}>
+        <RewardsModal
+          isOpen={showRewardsModal}
+          onClose={() => setShowRewardsModal(false)}
+          sessionId={sessionId}
+          onOpenSpinWheel={() => {
+            setShowRewardsModal(false)
+            setShowSpinWheel(true)
+          }}
+        />
+      </Suspense>
+
+      {/* Spin Wheel */}
+      <Suspense fallback={null}>
+        <SpinWheel
+          isOpen={showSpinWheel}
+          onClose={() => {
+            setShowSpinWheel(false)
+            setRewardsKey(prev => prev + 1) // Refresh rewards badge
+          }}
+          sessionId={sessionId}
+          onPrizeWon={(prize) => {
+            if (prize.couponCode) {
+              toast.success(`🎉 You won ${prize.prize.name}! Code: ${prize.couponCode}`, {
+                duration: 5000,
+              })
+            }
+          }}
+        />
+      </Suspense>
     </div>
   )
 }
+

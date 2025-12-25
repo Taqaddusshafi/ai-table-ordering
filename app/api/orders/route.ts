@@ -43,8 +43,8 @@ async function createNotification(
 // 🧩 Create new order
 export async function POST(request: NextRequest) {
   try {
-    const { tableId, sessionId, items, totalAmount } = await request.json()
-    console.log('Order POST received:', { tableId, sessionId, items, totalAmount })
+    const { tableId, sessionId, items, totalAmount, groupSessionId, memberName } = await request.json()
+    console.log('Order POST received:', { tableId, sessionId, items, totalAmount, groupSessionId, memberName })
 
     // Validation
     if (!tableId || !items || !Array.isArray(items) || items.length === 0 || !sessionId) {
@@ -77,16 +77,27 @@ export async function POST(request: NextRequest) {
 
     const supabase = createClient()
 
+    // Build order data with optional group fields
+    const orderData: any = {
+      table_id: tableId,
+      session_id: sessionId,
+      total_amount: totalAmount,
+      status: 'pending',
+      payment_status: 'pending',
+    }
+
+    // Add group session info if provided
+    if (groupSessionId) {
+      orderData.group_session_id = groupSessionId
+    }
+    if (memberName) {
+      orderData.member_name = memberName
+    }
+
     // Create order
     const { data: order, error: orderError } = await supabase
       .from('orders')
-      .insert({
-        table_id: tableId,
-        session_id: sessionId,
-        total_amount: totalAmount,
-        status: 'pending',
-        payment_status: 'pending',
-      })
+      .insert(orderData)
       .select()
       .single()
 

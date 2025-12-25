@@ -76,13 +76,17 @@ export function useGroupSession({ tableId, sessionId }: UseGroupSessionProps): U
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [memberName, setMemberName] = useState<string>('')
-  const subscriptionRef = useRef<any>(null)
+  const channelsRef = useRef<any[]>([])
+  const supabaseRef = useRef<any>(null)
+  const currentGroupIdRef = useRef<string | null>(null)
 
   // Check if user is host
   const isHost = group?.host_session_id === sessionId
 
   // Fetch group data
   const fetchGroup = useCallback(async () => {
+    if (!sessionId) return
+    
     try {
       const response = await fetch(`/api/group?sessionId=${sessionId}`)
       const result = await response.json()
@@ -99,107 +103,137 @@ export function useGroupSession({ tableId, sessionId }: UseGroupSessionProps): U
         }
         
         setError(null)
+        return result.data.id
       } else {
         setGroup(null)
+        return null
       }
     } catch (err: any) {
       setError(err.message)
+      return null
     } finally {
       setIsLoading(false)
     }
   }, [sessionId])
 
-  // Initial fetch and subscription
-  useEffect(() => {
-    fetchGroup()
+  // Clean up existing subscriptions
+  const cleanupSubscriptions = useCallback(() => {
+    if (channelsRef.current.length > 0 && supabaseRef.current) {
+      channelsRef.current.forEach(channel => {
+        try {
+          supabaseRef.current.removeChannel(channel)
+        } catch (e) {
+          console.log('Error removing channel:', e)
+        }
+      })
+      channelsRef.current = []
+    }
+  }, [])
 
-    // Set up real-time subscription for group changes
-    const supabase = createClient()
+  // Set up real-time subscriptions for a group
+  const setupSubscriptions = useCallback((groupId: string) => {
+    if (!groupId || currentGroupIdRef.current === groupId) return
     
-    const setupSubscription = async () => {
-      // First check if user is in a group
-      const response = await fetch(`/api/group?sessionId=${sessionId}`)
-      const result = await response.json()
-      
-      if (result.success && result.data) {
-        const groupId = result.data.id
+    // Clean up old subscriptions first
+    cleanupSubscriptions()
+    
+    currentGroupIdRef.current = groupId
+    const supabase = createClient()
+    supabaseRef.current = supabase
 
-        // Subscribe to group_members changes
-        const membersChannel = supabase
-          .channel(`group_members_${groupId}`)
-          .on(
-            'postgres_changes',
-            {
-              event: '*',
-              schema: 'public',
-              table: 'group_members',
-              filter: `group_session_id=eq.${groupId}`,
-            },
-            () => {
-              fetchGroup()
-            }
-          )
-          .subscribe()
+    console.log('Setting up real-time subscriptions for group:', groupId)
 
-        // Subscribe to orders for this group
-        const ordersChannel = supabase
-          .channel(`group_orders_${groupId}`)
-          .on(
-            'postgres_changes',
-            {
-              event: '*',
-              schema: 'public',
-              table: 'orders',
-              filter: `group_session_id=eq.${groupId}`,
-            },
-            () => {
-              fetchGroup()
-            }
-          )
-          .subscribe()
+    // Subscribe to group_members changes
+    const membersChannel = supabase
+      .channel(`group_members_${groupId}_${Date.now()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'group_members',
+          filter: `group_session_id=eq.${groupId}`,
+        },
+        (payload) => {
+          console.log('Group members changed:', payload)
+          fetchGroup()
+        }
+      )
+      .subscribe((status: any) => {
+        console.log('Members channel status:', status)
+      })
 
-        // Subscribe to group session changes
-        const sessionChannel = supabase
-          .channel(`group_session_${groupId}`)
-          .on(
-            'postgres_changes',
-            {
-              event: 'UPDATE',
-              schema: 'public',
-              table: 'group_sessions',
-              filter: `id=eq.${groupId}`,
-            },
-            (payload) => {
-              if (payload.new && (payload.new as any).status === 'ended') {
-                setGroup(null)
-              } else {
-                fetchGroup()
-              }
-            }
-          )
-          .subscribe()
+    // Subscribe to orders for this group
+    const ordersChannel = supabase
+      .channel(`group_orders_${groupId}_${Date.now()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'orders',
+          filter: `group_session_id=eq.${groupId}`,
+        },
+        (payload) => {
+          console.log('Group orders changed:', payload)
+          fetchGroup()
+        }
+      )
+      .subscribe((status: any) => {
+        console.log('Orders channel status:', status)
+      })
 
-        subscriptionRef.current = { membersChannel, ordersChannel, sessionChannel }
+    // Subscribe to group session changes
+    const sessionChannel = supabase
+      .channel(`group_session_${groupId}_${Date.now()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'group_sessions',
+          filter: `id=eq.${groupId}`,
+        },
+        (payload) => {
+          console.log('Group session changed:', payload)
+          if (payload.new && (payload.new as any).status === 'ended') {
+            setGroup(null)
+            cleanupSubscriptions()
+          } else {
+            fetchGroup()
+          }
+        }
+      )
+      .subscribe((status: any) => {
+        console.log('Session channel status:', status)
+      })
+
+    channelsRef.current = [membersChannel, ordersChannel, sessionChannel]
+  }, [fetchGroup, cleanupSubscriptions])
+
+  // Initial fetch
+  useEffect(() => {
+    const init = async () => {
+      const groupId = await fetchGroup()
+      if (groupId) {
+        setupSubscriptions(groupId)
       }
     }
+    init()
 
-    setupSubscription()
+    // Polling fallback for reliability (every 10 seconds)
+    const pollInterval = setInterval(() => {
+      if (currentGroupIdRef.current) {
+        fetchGroup()
+      }
+    }, 10000)
 
     return () => {
-      if (subscriptionRef.current) {
-        const supabase = createClient()
-        if (subscriptionRef.current.membersChannel) {
-          supabase.removeChannel(subscriptionRef.current.membersChannel)
-        }
-        if (subscriptionRef.current.ordersChannel) {
-          supabase.removeChannel(subscriptionRef.current.ordersChannel)
-        }
-        if (subscriptionRef.current.sessionChannel) {
-          supabase.removeChannel(subscriptionRef.current.sessionChannel)
-        }
-      }
+      cleanupSubscriptions()
+      clearInterval(pollInterval)
+      currentGroupIdRef.current = null
     }
-  }, [sessionId, fetchGroup])
+  }, [sessionId]) // Only re-run when sessionId changes
 
   // Create a new group
   const createGroup = async (hostName: string): Promise<boolean> => {
@@ -221,7 +255,10 @@ export function useGroupSession({ tableId, sessionId }: UseGroupSessionProps): U
 
       if (result.success) {
         setMemberName(hostName)
-        await fetchGroup()
+        const groupId = await fetchGroup()
+        if (groupId) {
+          setupSubscriptions(groupId)
+        }
         return true
       } else {
         setError(result.error)
@@ -256,7 +293,10 @@ export function useGroupSession({ tableId, sessionId }: UseGroupSessionProps): U
 
       if (result.success) {
         setMemberName(name)
-        await fetchGroup()
+        const groupId = await fetchGroup()
+        if (groupId) {
+          setupSubscriptions(groupId)
+        }
         return true
       } else {
         setError(result.error)
@@ -291,6 +331,8 @@ export function useGroupSession({ tableId, sessionId }: UseGroupSessionProps): U
       const result = await response.json()
 
       if (result.success) {
+        cleanupSubscriptions()
+        currentGroupIdRef.current = null
         setGroup(null)
         setMemberName('')
         return true
@@ -322,6 +364,8 @@ export function useGroupSession({ tableId, sessionId }: UseGroupSessionProps): U
       const result = await response.json()
 
       if (result.success) {
+        cleanupSubscriptions()
+        currentGroupIdRef.current = null
         setGroup(null)
         return true
       } else {

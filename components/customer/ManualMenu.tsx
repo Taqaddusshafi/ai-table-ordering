@@ -33,6 +33,9 @@ interface ManualMenuProps {
   onOrderConfirmed: (items: any[], totalAmount: number) => void
   onSwitchToOrders?: () => void
   onCartChange?: (count: number) => void
+  // Group ordering props
+  groupSessionId?: string
+  memberName?: string
 }
 
 // Lazy loading image component
@@ -113,6 +116,8 @@ export default function ManualMenu({
   onOrderConfirmed,
   onSwitchToOrders,
   onCartChange,
+  groupSessionId,
+  memberName,
 }: ManualMenuProps) {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [cart, setCart] = useState<CartItem[]>([])
@@ -260,6 +265,8 @@ export default function ManualMenu({
           sessionId,
           items: orderItems,
           totalAmount,
+          groupSessionId,
+          memberName,
         }),
       })
 
