@@ -4,13 +4,17 @@ import { useState, useEffect, Suspense, lazy, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { generateSessionId } from '@/lib/utils/helpers'
 import toast from 'react-hot-toast'
-import { Loader2, Bell, BellOff, Volume2 } from 'lucide-react'
+import { Loader2, Bell, BellOff, Volume2, Users } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { useGroupSession } from '@/hooks/useGroupSession'
 
 // Lazy load components
 const ChatInterface = lazy(() => import('@/components/customer/ChatInterface'))
 const ManualMenu = lazy(() => import('@/components/customer/ManualMenu'))
 const OrderStatus = lazy(() => import('@/components/customer/OrderStatus'))
+const CreateJoinGroupModal = lazy(() => import('@/components/customer/CreateJoinGroupModal'))
+const GroupOrderBanner = lazy(() => import('@/components/customer/GroupOrderBanner'))
+const GroupOrderSummary = lazy(() => import('@/components/customer/GroupOrderSummary'))
 
 function TabSkeleton() {
   return (
@@ -46,8 +50,28 @@ export default function TablePage() {
   const [activeOrdersCount, setActiveOrdersCount] = useState(0)
   const [notificationsEnabled, setNotificationsEnabled] = useState(false)
   const [showNotificationPrompt, setShowNotificationPrompt] = useState(false)
+  const [showGroupModal, setShowGroupModal] = useState(false)
+  const [showGroupSummary, setShowGroupSummary] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const swRegistration = useRef<ServiceWorkerRegistration | null>(null)
+
+  // Group ordering hook
+  const {
+    group,
+    isLoading: groupLoading,
+    error: groupError,
+    isHost,
+    memberName,
+    createGroup,
+    joinGroup,
+    leaveGroup,
+    endGroup,
+    groupCode,
+    members,
+    groupOrders,
+    groupTotal,
+    myTotal,
+  } = useGroupSession({ tableId, sessionId })
 
   // Initialize audio element
   useEffect(() => {
@@ -387,6 +411,27 @@ export default function TablePage() {
               Table {tableId.length > 10 ? `${tableId.slice(0, 10)}...` : tableId}
             </h1>
             <div className="flex items-center gap-2">
+              {/* Group Order Button */}
+              {group ? (
+                <button
+                  onClick={() => setShowGroupSummary(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg transition-colors"
+                >
+                  <Users className="w-4 h-4" />
+                  <span className="font-medium text-sm">{groupCode}</span>
+                  <span className="text-xs bg-purple-200 px-1.5 py-0.5 rounded-full">
+                    {members.length}
+                  </span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowGroupModal(true)}
+                  className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                  title="Group Order"
+                >
+                  <Users className="w-4 h-4" />
+                </button>
+              )}
               {/* Sound test button */}
               <button
                 onClick={testSound}
@@ -456,6 +501,34 @@ export default function TablePage() {
 
       {/* Content */}
       <div className="max-w-4xl mx-auto px-4 py-4 sm:py-6">
+        {/* Group Order Banner */}
+        {group && (
+          <Suspense fallback={<div className="h-20 skeleton rounded-2xl mb-4" />}>
+            <div className="mb-4">
+              <GroupOrderBanner
+                groupCode={groupCode || ''}
+                members={members}
+                memberName={memberName}
+                isHost={isHost}
+                onViewGroup={() => setShowGroupSummary(true)}
+                onLeaveGroup={async () => {
+                  if (isHost) {
+                    if (confirm('End group for everyone?')) {
+                      await endGroup()
+                      toast.success('Group ended')
+                    }
+                  } else {
+                    if (confirm('Leave this group?')) {
+                      await leaveGroup()
+                      toast.success('Left group')
+                    }
+                  }
+                }}
+              />
+            </div>
+          </Suspense>
+        )}
+
         <Suspense fallback={<TabSkeleton />}>
           {activeTab === 'manual' && (
             <ManualMenu
@@ -480,6 +553,41 @@ export default function TablePage() {
           )}
         </Suspense>
       </div>
+
+      {/* Group Order Modal */}
+      <Suspense fallback={null}>
+        <CreateJoinGroupModal
+          isOpen={showGroupModal}
+          onClose={() => setShowGroupModal(false)}
+          onCreateGroup={createGroup}
+          onJoinGroup={joinGroup}
+          isLoading={groupLoading}
+          error={groupError}
+        />
+      </Suspense>
+
+      {/* Group Summary Modal */}
+      <Suspense fallback={null}>
+        <GroupOrderSummary
+          isOpen={showGroupSummary}
+          onClose={() => setShowGroupSummary(false)}
+          groupCode={groupCode || ''}
+          members={members}
+          orders={groupOrders}
+          groupTotal={groupTotal}
+          myTotal={myTotal}
+          mySessionId={sessionId}
+          isHost={isHost}
+          onLeaveGroup={async () => {
+            await leaveGroup()
+            toast.success('Left group')
+          }}
+          onEndGroup={async () => {
+            await endGroup()
+            toast.success('Group ended')
+          }}
+        />
+      </Suspense>
     </div>
   )
 }

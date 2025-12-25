@@ -9,6 +9,7 @@ import {
   AlertCircle, Edit, Plus, Minus, X, Save, ShoppingCart, Search, Bell, 
   RefreshCw, ChefHat, Utensils
 } from 'lucide-react'
+import WaitTimeEstimate from './WaitTimeEstimate'
 
 interface OrderStatusProps {
   tableId: string
@@ -467,6 +468,18 @@ export default function OrderStatus({ tableId, sessionId }: OrderStatusProps) {
 
               {/* Status Progress */}
               <StatusProgress currentStatus={order.status} />
+
+              {/* Wait Time Estimate for pending/preparing orders */}
+              {(order.status === 'pending' || order.status === 'preparing') && !isEditing && (
+                <div className="mb-4">
+                  <WaitTimeEstimate 
+                    orderId={order.id}
+                    tableId={tableId}
+                    showKitchenLoad={true}
+                    refreshInterval={15000}
+                  />
+                </div>
+              )}
 
               {/* Modify Timer */}
               {canModify && !isEditing && (

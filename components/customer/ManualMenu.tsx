@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import toast from 'react-hot-toast'
 import { Plus, Minus, X, ShoppingCart, Loader2, CreditCard, Banknote, Search, ChevronUp } from 'lucide-react'
+import WaitTimeEstimate from './WaitTimeEstimate'
 
 // Declare Razorpay type
 declare global {
@@ -715,6 +716,16 @@ export default function ManualMenu({
             </div>
             
             <div className="p-5">
+              {/* Wait Time Estimate */}
+              <div className="mb-4">
+                <WaitTimeEstimate
+                  cartItems={cart.map(item => ({ id: item.id, quantity: item.quantity }))}
+                  tableId={tableId}
+                  showKitchenLoad={true}
+                  compact={false}
+                />
+              </div>
+
               <div className="bg-gray-50 rounded-xl p-4 mb-5">
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-gray-600">Items</span>
