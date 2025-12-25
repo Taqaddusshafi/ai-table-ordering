@@ -156,9 +156,71 @@ export async function GET(request: NextRequest) {
     const groupId = searchParams.get('groupId')
     const sessionId = searchParams.get('sessionId')
 
+    console.log('GET /api/group called with:', { groupCode, groupId, sessionId })
+
     const supabase = createClient()
 
-    let query = supabase
+    let targetGroupId: string | null = null
+
+    if (groupCode) {
+      // Find by group code
+      const { data: groupByCode } = await supabase
+        .from('group_sessions')
+        .select('id')
+        .eq('group_code', groupCode.toUpperCase())
+        .eq('status', 'active')
+        .single()
+      
+      targetGroupId = groupByCode?.id || null
+      console.log('Found group by code:', targetGroupId)
+    } else if (groupId) {
+      targetGroupId = groupId
+    } else if (sessionId) {
+      // Find ALL group memberships for this session
+      const { data: memberships, error: membershipError } = await supabase
+        .from('group_members')
+        .select('group_session_id')
+        .eq('session_id', sessionId)
+        .order('joined_at', { ascending: false })
+
+      console.log('All memberships for', sessionId, ':', memberships, membershipError)
+
+      if (memberships && memberships.length > 0) {
+        // Check each membership to find an active group
+        for (const m of memberships) {
+          const { data: activeGroup } = await supabase
+            .from('group_sessions')
+            .select('id')
+            .eq('id', m.group_session_id)
+            .eq('status', 'active')
+            .single()
+          
+          if (activeGroup) {
+            targetGroupId = activeGroup.id
+            console.log('Found active group for member:', targetGroupId)
+            break
+          }
+        }
+      }
+      
+      if (!targetGroupId) {
+        console.log('No active group membership found for session:', sessionId)
+        return NextResponse.json({ success: true, data: null })
+      }
+    } else {
+      return NextResponse.json(
+        { success: false, error: 'Missing code, groupId, or sessionId' },
+        { status: 400 }
+      )
+    }
+
+    if (!targetGroupId) {
+      console.log('No group found')
+      return NextResponse.json({ success: true, data: null })
+    }
+
+    // Now fetch the full group data
+    const { data: group, error } = await supabase
       .from('group_sessions')
       .select(`
         *,
@@ -169,33 +231,11 @@ export async function GET(request: NextRequest) {
           joined_at
         )
       `)
+      .eq('id', targetGroupId)
       .eq('status', 'active')
+      .single()
 
-    if (groupCode) {
-      query = query.eq('group_code', groupCode.toUpperCase())
-    } else if (groupId) {
-      query = query.eq('id', groupId)
-    } else if (sessionId) {
-      // Find group where user is a member
-      const { data: membership } = await supabase
-        .from('group_members')
-        .select('group_session_id')
-        .eq('session_id', sessionId)
-        .single()
-
-      if (membership) {
-        query = query.eq('id', membership.group_session_id)
-      } else {
-        return NextResponse.json({ success: true, data: null })
-      }
-    } else {
-      return NextResponse.json(
-        { success: false, error: 'Missing code, groupId, or sessionId' },
-        { status: 400 }
-      )
-    }
-
-    const { data: group, error } = await query.single()
+    console.log('Full group data:', group, error)
 
     if (error || !group) {
       return NextResponse.json({ success: true, data: null })
