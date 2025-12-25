@@ -31,28 +31,27 @@ export async function POST(request: NextRequest) {
 
     const supabase = createClient()
 
-    // Auto-clean: End expired groups for this table
+    // AGGRESSIVE CLEANUP: End ALL expired groups globally
     await supabase
       .from('group_sessions')
       .update({ status: 'ended' })
-      .eq('table_id', tableId)
       .eq('status', 'active')
       .lt('expires_at', new Date().toISOString())
 
-    // Auto-clean: End groups with no members (everyone left)
-    const { data: emptyGroups } = await supabase
+    // AGGRESSIVE CLEANUP: End ALL groups with no members globally
+    const { data: allActiveGroups } = await supabase
       .from('group_sessions')
       .select(`
         id,
         group_members (id)
       `)
-      .eq('table_id', tableId)
       .eq('status', 'active')
 
-    if (emptyGroups) {
-      for (const g of emptyGroups) {
+    if (allActiveGroups) {
+      for (const g of allActiveGroups) {
         const memberCount = (g as any).group_members?.length || 0
         if (memberCount === 0) {
+          console.log('Ending empty group:', g.id)
           await supabase
             .from('group_sessions')
             .update({ status: 'ended' })
@@ -61,7 +60,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Now check if there's still an active group for this table
+    // Now check if there's still an active, non-expired group with members for THIS table
     const { data: existingGroup } = await supabase
       .from('group_sessions')
       .select('*, group_members(id)')
@@ -70,9 +69,10 @@ export async function POST(request: NextRequest) {
       .gt('expires_at', new Date().toISOString())
       .single()
 
+    // Only block if there's a group with at least 1 member
     if (existingGroup && ((existingGroup as any).group_members?.length || 0) > 0) {
       return NextResponse.json(
-        { success: false, error: 'Active group already exists for this table', existingCode: existingGroup.group_code },
+        { success: false, error: 'Active group already exists for this table. Ask them to share the code or wait for them to finish.', existingCode: existingGroup.group_code },
         { status: 409 }
       )
     }

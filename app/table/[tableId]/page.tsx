@@ -418,64 +418,54 @@ export default function TablePage() {
             <h1 className="text-lg font-semibold text-gray-900">
               Table {tableId.length > 10 ? `${tableId.slice(0, 10)}...` : tableId}
             </h1>
-            <div className="flex items-center gap-2">
-              {/* Group Order Button - Made more prominent */}
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              {/* Group Order Button */}
               {group ? (
                 <button
                   onClick={() => setShowGroupSummary(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl transition-all shadow-lg shadow-purple-200 hover:shadow-purple-300"
+                  className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl transition-all shadow-lg"
                 >
                   <Users className="w-4 h-4" />
-                  <span className="font-semibold text-sm">{groupCode}</span>
-                  <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">
-                    {members.length} 👥
+                  <span className="font-semibold text-xs sm:text-sm">{groupCode}</span>
+                  <span className="text-xs bg-white/20 px-1.5 py-0.5 rounded-full">
+                    {members.length}
                   </span>
                 </button>
               ) : (
                 <button
                   onClick={() => setShowGroupModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white rounded-xl transition-all shadow-md hover:shadow-lg animate-pulse hover:animate-none"
-                  title="Group Order"
+                  className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white rounded-xl transition-all shadow-md"
                 >
                   <Users className="w-4 h-4" />
-                  <span className="font-medium text-sm hidden sm:inline">Group Order</span>
+                  <span className="font-medium text-xs sm:text-sm">Group</span>
                 </button>
               )}
               {/* Rewards Badge */}
-              <Suspense fallback={<div className="w-20 h-8 bg-gray-100 rounded-xl animate-pulse" />}>
+              <Suspense fallback={<div className="w-16 h-9 bg-gray-100 rounded-xl animate-pulse" />}>
                 <RewardsBadge
                   key={rewardsKey}
                   sessionId={sessionId}
                   onOpenRewards={() => setShowRewardsModal(true)}
                 />
               </Suspense>
-              {/* Sound test button */}
-              <button
-                onClick={testSound}
-                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                title="Test sound"
-              >
-                <Volume2 className="w-4 h-4" />
-              </button>
-              {/* Notification status */}
+              {/* Notification Button - with label on mobile */}
               <button
                 onClick={requestNotificationPermission}
-                className={`p-2 rounded-lg transition-colors ${
+                className={`flex items-center gap-1 px-2 py-2 rounded-xl transition-colors ${
                   notificationsEnabled 
                     ? 'text-green-600 bg-green-50' 
-                    : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+                    : 'text-gray-500 bg-gray-100 hover:bg-gray-200'
                 }`}
-                title={notificationsEnabled ? 'Notifications on' : 'Enable notifications'}
               >
                 {notificationsEnabled ? (
                   <Bell className="w-4 h-4" />
                 ) : (
                   <BellOff className="w-4 h-4" />
                 )}
+                <span className="text-xs font-medium hidden xs:inline sm:inline">
+                  {notificationsEnabled ? 'On' : 'Off'}
+                </span>
               </button>
-              <span className="text-xs text-gray-400 font-mono">
-                {sessionId.slice(0, 6)}
-              </span>
             </div>
           </div>
         </div>
