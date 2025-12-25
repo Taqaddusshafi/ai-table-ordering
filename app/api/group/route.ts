@@ -31,15 +31,46 @@ export async function POST(request: NextRequest) {
 
     const supabase = createClient()
 
-    // Check if there's already an active group for this table
-    const { data: existingGroup } = await supabase
+    // Auto-clean: End expired groups for this table
+    await supabase
       .from('group_sessions')
-      .select('*')
+      .update({ status: 'ended' })
       .eq('table_id', tableId)
       .eq('status', 'active')
+      .lt('expires_at', new Date().toISOString())
+
+    // Auto-clean: End groups with no members (everyone left)
+    const { data: emptyGroups } = await supabase
+      .from('group_sessions')
+      .select(`
+        id,
+        group_members (id)
+      `)
+      .eq('table_id', tableId)
+      .eq('status', 'active')
+
+    if (emptyGroups) {
+      for (const g of emptyGroups) {
+        const memberCount = (g as any).group_members?.length || 0
+        if (memberCount === 0) {
+          await supabase
+            .from('group_sessions')
+            .update({ status: 'ended' })
+            .eq('id', g.id)
+        }
+      }
+    }
+
+    // Now check if there's still an active group for this table
+    const { data: existingGroup } = await supabase
+      .from('group_sessions')
+      .select('*, group_members(id)')
+      .eq('table_id', tableId)
+      .eq('status', 'active')
+      .gt('expires_at', new Date().toISOString())
       .single()
 
-    if (existingGroup) {
+    if (existingGroup && ((existingGroup as any).group_members?.length || 0) > 0) {
       return NextResponse.json(
         { success: false, error: 'Active group already exists for this table', existingCode: existingGroup.group_code },
         { status: 409 }
