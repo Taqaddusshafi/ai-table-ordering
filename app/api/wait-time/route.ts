@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
 
     const supabase = createClient()
 
-    // Get pending orders count for kitchen load calculation (simple query without prep_time_minutes)
+    // Get pending orders count for kitchen load calculation
     const { data: pendingOrders, error: pendingError } = await supabase
       .from('orders')
       .select(`
@@ -33,7 +33,8 @@ export async function GET(request: NextRequest) {
         status,
         created_at,
         order_items (
-          quantity
+          quantity,
+          menu_item_id
         )
       `)
       .in('status', ['pending', 'preparing'])
@@ -45,13 +46,12 @@ export async function GET(request: NextRequest) {
 
     const pendingOrdersList = (pendingOrders || []) as any[]
 
-    // Get menu items for category lookup (without prep_time_minutes which may not exist)
+    // Get menu items with prep time and category
     const { data: menuItems, error: menuError } = await supabase
       .from('menu_items')
-      .select('id, category')
+      .select('id, category, prep_time_minutes')
       .eq('available', true)
 
-    // If menuError, just continue without menu data
     if (menuError) {
       console.error('Error fetching menu items:', menuError)
     }
@@ -81,10 +81,15 @@ export async function GET(request: NextRequest) {
         )
       }
 
-      orderItems = (order.order_items as any[])?.map((item: any) => ({
-        id: item.menu_item_id || '',
-        quantity: item.quantity,
-      })) || []
+      // Map order items with prep time from menu items
+      orderItems = (order.order_items as any[])?.map((item: any) => {
+        const menuItem = menuItems?.find((m: any) => m.id === item.menu_item_id)
+        return {
+          id: item.menu_item_id || '',
+          quantity: item.quantity,
+          prep_time_minutes: menuItem?.prep_time_minutes,
+        }
+      }) || []
 
       // For existing orders, find position in queue
       const queuePosition = pendingOrdersList.findIndex((o: any) => o.id === orderId)
@@ -113,7 +118,16 @@ export async function GET(request: NextRequest) {
     // If items provided, calculate for cart items
     if (itemsParam) {
       try {
-        orderItems = JSON.parse(itemsParam)
+        const cartItems = JSON.parse(itemsParam)
+        // Map cart items with prep time from menu items
+        orderItems = cartItems.map((item: any) => {
+          const menuItem = menuItems?.find((m: any) => m.id === item.id)
+          return {
+            id: item.id,
+            quantity: item.quantity,
+            prep_time_minutes: menuItem?.prep_time_minutes,
+          }
+        })
       } catch (e) {
         return NextResponse.json(
           { success: false, error: 'Invalid items format' },
@@ -156,4 +170,3 @@ export async function GET(request: NextRequest) {
     )
   }
 }
-

@@ -411,25 +411,26 @@ export default function TablePage() {
               Table {tableId.length > 10 ? `${tableId.slice(0, 10)}...` : tableId}
             </h1>
             <div className="flex items-center gap-2">
-              {/* Group Order Button */}
+              {/* Group Order Button - Made more prominent */}
               {group ? (
                 <button
                   onClick={() => setShowGroupSummary(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl transition-all shadow-lg shadow-purple-200 hover:shadow-purple-300"
                 >
                   <Users className="w-4 h-4" />
-                  <span className="font-medium text-sm">{groupCode}</span>
-                  <span className="text-xs bg-purple-200 px-1.5 py-0.5 rounded-full">
-                    {members.length}
+                  <span className="font-semibold text-sm">{groupCode}</span>
+                  <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">
+                    {members.length} 👥
                   </span>
                 </button>
               ) : (
                 <button
                   onClick={() => setShowGroupModal(true)}
-                  className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white rounded-xl transition-all shadow-md hover:shadow-lg animate-pulse hover:animate-none"
                   title="Group Order"
                 >
                   <Users className="w-4 h-4" />
+                  <span className="font-medium text-sm hidden sm:inline">Group Order</span>
                 </button>
               )}
               {/* Sound test button */}
